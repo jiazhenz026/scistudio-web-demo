@@ -106,7 +106,7 @@ function loginPage(error = ""): Response {
 </style>
 <div class="card">
   <h1>SciStudio</h1>
-  <p>An interactive workflow runtime for multimodal scientific data — agent-driven through WebMCP.</p>
+  <p>Scientific data workbench with your AI partner.</p>
   <form method="post" action="${LOGIN_PATH}">
     <input type="password" name="password" placeholder="Access code" autofocus
            autocomplete="current-password" aria-label="Access code">

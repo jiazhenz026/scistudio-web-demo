@@ -123,15 +123,11 @@ export const useAppStore = create<AppStore>()(
         // anything not in the current union back to "lineage" — the
         // semantic replacement for the run-history surface Jobs used
         // to occupy. This also covers any future tab removals.
-        const validTabs = new Set<string>([
-          "ai",
-          "terminal",
-          "config",
-          "logs",
-          "plots",
-          "lineage",
-          "git",
-        ]);
+        // "ai" and "terminal" are omitted: the public WebMCP demo removed both
+        // tabs (see BottomPanel.parts/TabBar), so a persisted snapshot pointing
+        // at either coerces to "lineage" below rather than selecting a tab the
+        // user can no longer see.
+        const validTabs = new Set<string>(["config", "logs", "plots", "lineage", "git"]);
         if (typeof state.activeBottomTab !== "string" || !validTabs.has(state.activeBottomTab)) {
           state.activeBottomTab = "lineage";
         }

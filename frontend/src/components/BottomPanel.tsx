@@ -1,7 +1,6 @@
 import type { BlockSchemaResponse, LogEntry, WorkflowEdge, WorkflowNode } from "../types/api";
 import type { BottomTab } from "../types/ui";
 
-import { TerminalTabs } from "./AIChat/TerminalTabs";
 import { GitTab } from "./Git/GitTab";
 import { LineageTab } from "./Lineage/LineageTab";
 
@@ -97,12 +96,6 @@ export function BottomPanel({
             active-tab body fills the available space without a nested
             scroll context. The lineage tab (ADR-038 §3.8) and git tab
             (ADR-039 §3.5, #972) both render inside this flat container. */}
-        <div className={`h-full ${activeTab === "ai" ? "" : "hidden"}`}>
-          <TerminalTabs active={activeTab === "ai"} surface="chat" />
-        </div>
-        <div className={`h-full ${activeTab === "terminal" ? "" : "hidden"}`}>
-          <TerminalTabs active={activeTab === "terminal"} surface="terminal" />
-        </div>
         {activeTab === "config" ? (
           // ADR-053 (#2057) — a step saying "set this block's path" points at
           // the panel, not at the node: once a block is selected, the settings
@@ -137,9 +130,9 @@ export function BottomPanel({
           // conflict-state close guard must survive bottom-tab
           // switches; Codex P1 on PR #974).
           <GitTab />
-        ) : activeTab !== "ai" && activeTab !== "terminal" ? (
+        ) : (
           <PlaceholderTab />
-        ) : null}
+        )}
       </div>
     </section>
   );

@@ -32,7 +32,7 @@ export function WelcomeScreen({
             <div className="my-auto">
               <h1 className="max-w-xl font-display text-7xl leading-tight text-ink">SciStudio</h1>
               <p className="mt-4 max-w-2xl text-lg leading-8 text-stone-600">
-                Every tool. Every format. One workflow.
+                Scientific data workbench with your AI partner.
               </p>
               {/*
                * ADR-053 FR-001 — the "Run Your First SciStudio Workflow" prompt
