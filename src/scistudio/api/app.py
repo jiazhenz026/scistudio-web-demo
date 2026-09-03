@@ -36,6 +36,7 @@ from scistudio.api.routes import (
 from scistudio.api.routes import (
     git as git_routes,
 )
+from scistudio.api.routes import webmcp
 from scistudio.api.routes import workflow_watcher as workflow_watcher_module
 from scistudio.api.runtime import ApiRuntime
 from scistudio.api.demo_auth import DemoAuthMiddleware
@@ -338,6 +339,9 @@ def create_app() -> FastAPI:
     app.include_router(work_import.router)
     # #2157: the shipped user documentation, read in the Learning Center.
     app.include_router(user_docs.router)
+    # WebMCP bridge: the same MCP tool catalogue over HTTP, for the SPA to
+    # register with document.modelContext.
+    app.include_router(webmcp.router)
 
     @app.get("/api/logs/stream")
     async def logs_stream(request: Request) -> object:
