@@ -15,7 +15,9 @@
 import { apiFetch } from "../lib/api/core";
 import { logger } from "../lib/logger";
 
-import type { ToolResult } from "./types";
+import { setWebmcpStatus } from "./badge";
+
+import type { ModelContext, ToolResult } from "./types";
 
 interface CatalogueEntry {
   name: string;
@@ -27,6 +29,20 @@ interface CatalogueEntry {
 
 /** Tools registered so far, so a re-registration can replace rather than duplicate. */
 let activeRegistration: AbortController | null = null;
+
+/**
+ * Locate the WebMCP entry point.
+ *
+ * The API moved during the origin trial: Chrome 149 shipped it as
+ * `navigator.modelContext`, Chrome 150 moved it to `document.modelContext`.
+ * Both versions are in the trial simultaneously, so probing both is the
+ * difference between working on a judge's browser and not.
+ */
+function findModelContext(): { context: ModelContext; where: string } | null {
+  if (document.modelContext) return { context: document.modelContext, where: "document" };
+  if (navigator.modelContext) return { context: navigator.modelContext, where: "navigator" };
+  return null;
+}
 
 async function fetchCatalogue(): Promise<CatalogueEntry[]> {
   const response = await apiFetch<{ tools: CatalogueEntry[] }>("/api/webmcp/tools");
@@ -55,14 +71,24 @@ async function callTool(
  * project switch re-registers cleanly instead of accumulating duplicates.
  */
 export async function registerSciStudioTools(): Promise<number> {
-  const modelContext = document.modelContext;
-  if (!modelContext) {
-    logger.info(
-      "WebMCP unavailable (document.modelContext undefined) — the app runs normally, " +
-        "but no tools are exposed to a browser agent.",
-    );
+  setWebmcpStatus("pending", "WebMCP · checking…");
+
+  const found = findModelContext();
+  if (!found) {
+    const chrome = navigator.userAgent.match(/Chrome\/(\d+)/)?.[1] ?? "unknown";
+    const why =
+      `Neither document.modelContext nor navigator.modelContext is defined. ` +
+      `Chrome ${chrome}. The API needs Chrome 149+ with ` +
+      `chrome://flags/#enable-webmcp-testing enabled and the browser fully relaunched, ` +
+      `or a browser that ships WebMCP (ChatGPT desktop).`;
+    // warn, not info: below the logger's reflux threshold nothing reaches the
+    // backend, and this is the one message worth having in the server log when
+    // the page runs somewhere with no DevTools.
+    logger.warn(`WebMCP unavailable — ${why}`);
+    setWebmcpStatus("unavailable", "WebMCP unavailable", why);
     return 0;
   }
+  const { context: modelContext, where } = found;
 
   activeRegistration?.abort();
   const controller = new AbortController();
@@ -73,6 +99,7 @@ export async function registerSciStudioTools(): Promise<number> {
     catalogue = await fetchCatalogue();
   } catch (error) {
     logger.error("WebMCP: could not fetch the tool catalogue", { error: String(error) });
+    setWebmcpStatus("error", "WebMCP · catalogue failed", String(error));
     return 0;
   }
 
@@ -107,6 +134,12 @@ export async function registerSciStudioTools(): Promise<number> {
     }
   }
 
-  logger.info(`WebMCP: registered ${registered}/${catalogue.length} tools`);
+  const summary = `registered ${registered}/${catalogue.length} tools via ${where}.modelContext`;
+  logger.warn(`WebMCP: ${summary}`);
+  setWebmcpStatus(
+    registered === catalogue.length ? "ok" : "error",
+    `WebMCP · ${registered} tools`,
+    summary,
+  );
   return registered;
 }

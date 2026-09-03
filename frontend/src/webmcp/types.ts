@@ -50,4 +50,12 @@ declare global {
   interface Document {
     modelContext?: ModelContext;
   }
+  interface Navigator {
+    /**
+     * Where the API lived in the Chrome 149 origin trial. Chrome 150 moved it
+     * to `document.modelContext`; both are declared because the trial is live
+     * on both versions right now.
+     */
+    modelContext?: ModelContext;
+  }
 }
