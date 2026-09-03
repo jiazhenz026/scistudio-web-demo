@@ -89,9 +89,10 @@ BLOCKED_ROUTERS: dict[str, str] = {
         "runtime underneath the demo and pulls code from outside the image, "
         "neither of which the demo requires."
     ),
-    "git_routes": (
-        "Commit/merge/cherry-pick against the deployment's working tree. The "
-        "demo project is disposable and reset on restart; version control over "
-        "it is meaningless here."
-    ),
+    # git_routes is intentionally NOT withheld: the History (lineage) tab reads
+    # git to show the commit behind each run, so withholding it breaks History.
+    # Serving it is safe here — GitEngine shells out through a subprocess arg
+    # list with no shell=True (no command injection), the router exposes only
+    # local operations (no clone/fetch/push, so no network reach), and any
+    # effect is confined to the visitor's own per-session, disposable container.
 }

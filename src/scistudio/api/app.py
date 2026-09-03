@@ -375,8 +375,12 @@ def create_app() -> FastAPI:
     # ADR-039 §3.5 — git endpoints (commit / log / diff / restore / branch
     # ops / merge / cherry-pick). D39-2.2b made these live. ADR-039 Addendum 1
     # (#1352) removed the stash CRUD surface (#1353).
-    if not _public_demo:  # withheld: public_demo.BLOCKED_ROUTERS
-        app.include_router(git_routes.router)
+    # Served in the public demo too: the History (lineage) tab reads git to
+    # show the commit behind each run, and GitEngine shells out through a
+    # subprocess arg list (no shell), exposes only local operations, and is
+    # confined to the visitor's per-session disposable container. See
+    # scistudio.public_demo.
+    app.include_router(git_routes.router)
     # #1741/#1742: diagnostics — /api/version, /api/client-logs, /api/diagnostics/bundle.
     app.include_router(diagnostics.router)
     # ADR-053 §4 — Bring In My Work session spawn (POST /api/work-import/sessions).
