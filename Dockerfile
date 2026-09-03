@@ -1,11 +1,18 @@
 # SciStudio public WebMCP demo image.
 #
-# Two things make this image different from a local SciStudio install:
-#   - SCISTUDIO_PUBLIC_DEMO=1 withholds the execution primitives. See
-#     src/scistudio/public_demo.py for what that covers and why.
-#   - Nothing in the image is writable by the runtime user except the demo
-#     project, so a bug that escapes the application-level refusals still has
-#     nowhere to persist anything.
+# The runtime is intact on purpose: the demo exists to show an agent authoring
+# and running real analysis code, so CodeBlock, drop-in scanning and the
+# scaffold tools all stay live. Access control is the password gate in
+# src/scistudio/api/demo_auth.py, and the container is what contains the code
+# the demo is meant to run:
+#   - non-root, so only /data and /tmp are writable;
+#   - the source tree is deleted after install, so there is nothing to patch;
+#   - no credentials in the image. SCISTUDIO_DEMO_PASSWORD is injected by the
+#     host at runtime and is the only secret, deliberately low-value.
+#
+# Outbound network access is the host's to restrict, not this file's. Verify
+# the cloud metadata endpoint is unreachable from inside a running container
+# before announcing the URL.
 
 # ---------------------------------------------------------------------------
 # Stage 1 — build the SPA. Its output lands in src/scistudio/api/static/ in
@@ -41,7 +48,8 @@ COPY --from=frontend /build/frontend/dist/ ./src/scistudio/api/static/
 RUN pip install --no-cache-dir . \
  && rm -rf /src
 
-# The demo project is the only writable path. Runs materialise artifacts here.
+# The demo project is the only writable path. Runs, scaffolded blocks and
+# materialised artifacts all land here, and a restart resets it.
 RUN useradd --create-home --uid 10001 scistudio \
  && mkdir -p /data/demo \
  && chown -R scistudio:scistudio /data

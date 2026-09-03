@@ -1,32 +1,38 @@
-"""Public-demo hardening switch for the internet-facing WebMCP deployment.
+"""Deployment switch for the internet-facing SciStudio WebMCP demo.
 
-SciStudio is built as a local-first desktop runtime: it executes user Python,
-spawns external applications, opens a PTY, installs packages, and treats the
-project directory as trusted input.  Every one of those is correct on a
-scientist's laptop and catastrophic on a public URL.
+The demo exists to show that an agent can author real analysis code inside
+SciStudio — write a block, run it, build a workflow — so it deliberately keeps
+the runtime intact. CodeBlock, AppBlock, drop-in scanning, project file writes
+and the scaffold/test MCP tools all stay live. Removing them would remove the
+claim the demo is making.
 
-This module is the single place that decides whether the process is running as
-the public WebMCP demo.  When :func:`is_public_demo` is true the app factory,
-the block scanner, and the route guards below refuse the capabilities that
-would hand a visitor arbitrary code execution.
+That means this deployment executes agent-authored code by design. The access
+control is therefore a shared password at the front door, not a feature-by-
+feature amputation behind it. See :mod:`scistudio.api.demo_auth`.
 
-The switch is deliberately fail-closed in one direction only: an operator must
-opt *in* to the hardened mode, because the desktop app and the test suite both
-need the full runtime.  The deployment sets ``SCISTUDIO_PUBLIC_DEMO=1``.
+What the password buys
+----------------------
 
-Threat model
-------------
+It narrows the audience from "every scanner on the internet" to "whoever was
+given the password", which for a hackathon submission is the judges. That is
+what makes leaving the runtime intact a defensible trade rather than a reckless
+one.
 
-The chain that matters most is not any single endpoint, it is the composition:
+What it does not buy
+--------------------
 
-1. ``PUT /api/projects/{id}/file`` writes a ``.py`` into the project.
-2. Tier-1 drop-in scanning imports every ``.py`` under the project as a
-   module, in the server process.
-3. ``POST /api/blocks/reload`` triggers that scan on demand.
+Anyone through the door can execute code in the container. The residual
+exposure is handled at the container boundary, not here:
 
-Any one of those is reasonable for a trusted local project.  Together they are
-a remote code execution primitive, so the hardened mode breaks all three links
-rather than relying on a single choke point.
+* no credentials anywhere in the environment — an attacker who reads
+  ``/proc/self/environ`` finds nothing worth having;
+* non-root, read-only root filesystem apart from the demo project;
+* resource caps and a periodic reset.
+
+Outbound network access is the part the host does not let us close. Confirm the
+cloud metadata endpoint is unreachable from inside the container before the
+deployment is announced — that is the one finding that would change this
+design.
 """
 
 from __future__ import annotations
@@ -34,63 +40,43 @@ from __future__ import annotations
 import os
 
 PUBLIC_DEMO_ENV = "SCISTUDIO_PUBLIC_DEMO"
-"""Environment variable that opts the process into hardened public-demo mode."""
+"""Environment variable that opts the process into the public demo deployment."""
 
 DEMO_PROJECT_ENV = "SCISTUDIO_DEMO_PROJECT"
-"""Absolute path of the single project the public demo is allowed to serve."""
+"""Absolute path of the single project the public demo serves."""
+
+DEMO_PASSWORD_ENV = "SCISTUDIO_DEMO_PASSWORD"
+"""Shared password for the demo. Absent means the demo refuses to serve."""
 
 
 def is_public_demo() -> bool:
-    """Return whether this process runs as the hardened public WebMCP demo."""
+    """Return whether this process runs as the public WebMCP demo."""
     return os.environ.get(PUBLIC_DEMO_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
-# Routers withheld from the public demo, with the reason each one is unsafe on
-# an internet-facing origin.  Keyed by the attribute name used in the app
-# factory so the two lists cannot drift apart silently.
+def demo_password() -> str:
+    """Return the configured demo password, or an empty string if unset."""
+    return os.environ.get(DEMO_PASSWORD_ENV, "").strip()
+
+
+# Routers withheld from the demo. The list is short on purpose: each entry is
+# something the demo has no use for, so withholding it costs nothing and
+# removes a distinct class of trouble. Anything the demo actually exercises
+# stays, protected by the password rather than by removal.
 BLOCKED_ROUTERS: dict[str, str] = {
-    "ai_pty": "WebSocket PTY — a shell on the host, reachable by any visitor.",
-    "packages": "POST /local installs a package into the running interpreter.",
-    "filesystem": "Browses, stats and reveals arbitrary host paths.",
-    "git_routes": "commit/merge/cherry-pick mutate the deployment's working tree.",
-    "work_import": "Spawns an agent session against host state.",
-    "lint": "Runs ruff as a subprocess on caller-supplied source.",
-    "ai": "Holds provider credentials and bills outbound model calls.",
-    "user_library": "Writes outside every project root, into user-scoped dirs.",
+    "ai_pty": (
+        "A PTY over WebSocket. The demo drives SciStudio through WebMCP tools, "
+        "so an interactive shell adds no capability the demo needs and a great "
+        "deal it does not."
+    ),
+    "packages": (
+        "Installs packages into the running interpreter. That mutates the "
+        "runtime underneath the demo and pulls code from outside the image, "
+        "neither of which the demo requires."
+    ),
+    "git_routes": (
+        "Commit/merge/cherry-pick against the deployment's working tree. The "
+        "demo project is disposable and reset on restart; version control over "
+        "it is meaningless here."
+    ),
 }
-
-# Block types withheld from the palette and the registry.  These are the
-# execution primitives; without them the remaining blocks only move typed data
-# between vetted, in-process implementations.
-BLOCKED_BLOCK_CLASSES: frozenset[str] = frozenset(
-    {
-        "CodeBlock",  # arbitrary Python / R / shell / MATLAB / notebook execution
-        "AppBlock",  # spawns and supervises external processes
-        "AIBlock",  # outbound provider calls on the deployment's credentials
-    }
-)
-
-
-# Write endpoints refused in the public demo, as (method, path prefix) pairs.
-#
-# ``PUT /api/projects/{id}/file`` is the write half of the RCE chain described
-# in the module docstring; ``POST /api/blocks/reload`` is its trigger. The
-# project create/update/delete verbs go with them because the demo serves one
-# fixed project and a visitor has no business replacing it.
-#
-# Matching is by method plus path prefix rather than by route name so a new
-# endpoint added under one of these prefixes is refused by default instead of
-# being exposed until someone remembers to list it.
-BLOCKED_WRITE_ROUTES: tuple[tuple[str, str], ...] = (
-    ("POST", "/api/projects"),
-    ("PUT", "/api/projects"),
-    ("PATCH", "/api/projects"),
-    ("DELETE", "/api/projects"),
-    ("POST", "/api/blocks/reload"),
-)
-
-
-def is_blocked_write(method: str, path: str) -> bool:
-    """Return whether *method* + *path* is refused in public-demo mode."""
-    method = method.upper()
-    return any(method == m and path.startswith(prefix) for m, prefix in BLOCKED_WRITE_ROUTES)

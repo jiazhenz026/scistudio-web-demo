@@ -14,10 +14,16 @@ services:
     healthCheckPath: /api/version
     autoDeploy: true
     envVars:
-      # Withholds the execution primitives. The image sets this too; naming it
-      # here keeps the blueprint honest about what the deployment relies on.
+      # Turns on the password gate and withholds the three unused routers.
+      # The image sets this too; naming it here keeps the blueprint honest
+      # about what the deployment relies on.
       - key: SCISTUDIO_PUBLIC_DEMO
         value: "1"
+      # Set in the Render dashboard, never in git. The app refuses to start
+      # without it, so a misconfigured deploy fails closed instead of serving
+      # a code-execution runtime to the open internet.
+      - key: SCISTUDIO_DEMO_PASSWORD
+        sync: false
       - key: SCISTUDIO_DEMO_PROJECT
         value: /data/demo
       - key: SCISTUDIO_LOG_LEVEL
