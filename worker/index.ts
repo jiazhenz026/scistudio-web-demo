@@ -25,11 +25,12 @@ import { Container, getContainer } from "@cloudflare/containers";
 export class SciStudioContainer extends Container<Env> {
   // The port SciStudio listens on inside the image (see Dockerfile CMD).
   defaultPort = 8000;
-  // Reclaim an idle session's container quickly. A short window matters because
-  // an open SciStudio tab holds a /ws connection that renews activity, so a
-  // walked-away tab keeps billing until the window of true silence elapses;
-  // 5m bounds how long that can run.
-  sleepAfter = "5m";
+  // Reclaim a session's container after 30m of true inactivity. An open tab's
+  // /ws traffic renews this, so a workflow that runs while the user watches
+  // keeps the container warm; the window is generous so a long run the user
+  // stepped away from is not reclaimed mid-flight. Cost stays bounded by
+  // max_instances, and access is password-gated to judges.
+  sleepAfter = "30m";
   // Outbound is open so the agent can pull from the scientific data APIs the
   // demo chains with (UniProt, Ensembl, RCSB, AlphaFold, Open Targets, …), all
   // of which are HTTPS. A hostname allowlist would need TLS interception, which
@@ -122,6 +123,46 @@ function loginPage(error = ""): Response {
 
 function cookie(name: string, value: string, maxAge: number): string {
   return `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${maxAge}`;
+}
+
+/**
+ * Proxy a request to the session's container, tolerating a stopped container.
+ *
+ * A container stops on idle (sleepAfter), when Cloudflare reclaims it, or if the
+ * process inside crashes. The next request should cold-start it, but the raw
+ * container.fetch() can throw "the container is not running" — especially when
+ * the SPA fires a burst of requests into a cold container at once. An uncaught
+ * throw here becomes a 500 in the browser. So: on that error, explicitly start
+ * the container, wait for its port, and retry a few times with backoff.
+ */
+async function fetchContainer(
+  container: DurableObjectStub<SciStudioContainer>,
+  request: Request,
+): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 4; attempt++) {
+    try {
+      return await container.fetch(request.clone());
+    } catch (error) {
+      lastError = error;
+      const message = String(error);
+      if (!/not running|consider calling start|is not ready|starting/i.test(message)) {
+        throw error;
+      }
+      // Kick a start (idempotent if already starting) and wait before retrying.
+      try {
+        await container.startAndWaitForPorts();
+      } catch {
+        // Start is best-effort here; the retry below is what actually recovers.
+      }
+      await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+    }
+  }
+  // Out of retries: a readable 503 the SPA can handle, not an opaque 500.
+  return new Response(
+    JSON.stringify({ detail: "The demo runtime is starting. Please retry in a moment." }),
+    { status: 503, headers: { "content-type": "application/json", "retry-after": "5" } },
+  );
 }
 
 /**
@@ -239,7 +280,7 @@ export default {
     }
 
     const container = getContainer(env.SCISTUDIO, sid);
-    const response = await container.fetch(request);
+    const response = await fetchContainer(container, request);
 
     if (setSid) {
       const headers = new Headers(response.headers);
