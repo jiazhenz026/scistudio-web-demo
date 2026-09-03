@@ -18,6 +18,10 @@ export interface BottomPanelControlsDeps {
   bottomPanelPinned: boolean;
   setSelectedNodeId: (id: string | null) => void;
   setActiveBottomTab: (tab: BottomTab) => void;
+  /** Called when a node is selected (not on deselect). Used to bring the
+   *  node's output into view — the DataPreview lives in the left panel's
+   *  Preview section, so App switches there here. */
+  onNodeSelected?: (nodeId: string) => void;
 }
 
 export interface BottomPanelControls {
@@ -30,7 +34,7 @@ export interface BottomPanelControls {
 }
 
 export function useBottomPanelControls(deps: BottomPanelControlsDeps): BottomPanelControls {
-  const { bottomPanelPinned, setSelectedNodeId, setActiveBottomTab } = deps;
+  const { bottomPanelPinned, setSelectedNodeId, setActiveBottomTab, onNodeSelected } = deps;
 
   const bottomPanelRef = useRef<PanelImperativeHandle>(null);
 
@@ -53,6 +57,7 @@ export function useBottomPanelControls(deps: BottomPanelControlsDeps): BottomPan
       if (nodeId) {
         setActiveBottomTab("config");
         expandBottomPanel();
+        onNodeSelected?.(nodeId);
         /*
          * ADR-053 FR-052 (#2057) — `node_selected`, one of the three names in
          * the closed `UI_EVENT_NAMES` set. Reported here rather than from
@@ -72,7 +77,7 @@ export function useBottomPanelControls(deps: BottomPanelControlsDeps): BottomPan
         void state.reportTutorialUiEvent("node_selected", blockType);
       }
     },
-    [expandBottomPanel, setSelectedNodeId, setActiveBottomTab],
+    [expandBottomPanel, setSelectedNodeId, setActiveBottomTab, onNodeSelected],
   );
 
   // Clicking an error badge selects the node and opens the Logs tab.

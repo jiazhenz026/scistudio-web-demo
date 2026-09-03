@@ -7,6 +7,7 @@
 // it into a presentation component lets App.tsx focus on lifecycle and
 // state wiring.
 
+import { Eye } from "lucide-react";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 
@@ -630,8 +631,26 @@ export function ProjectWorkspace(props: ProjectWorkspaceProps) {
                  * element left her standing in the corner of the *window*, over
                  * the left panel, when it was not on screen.
                  */}
-                <div className="h-full min-h-0" data-tutorial-target="workspace_stage">
+                <div
+                  className="relative h-full min-h-0"
+                  data-tutorial-target="workspace_stage"
+                >
                   <CanvasOrEditor {...props} />
+                  {/* Floating hint: the Data Preview moved into the left Preview
+                   * section, so on the canvas we remind the user how to reach a
+                   * block's output. Shown only on the canvas (not a file editor)
+                   * when there are blocks to select and none is selected;
+                   * selecting one auto-switches the left panel to Preview and
+                   * this disappears. pointer-events-none so it never blocks the
+                   * canvas. */}
+                  {!props.activeFileTab &&
+                  props.workflowNodes.length > 0 &&
+                  !selectedNodeId ? (
+                    <div className="pointer-events-none absolute bottom-4 left-1/2 z-10 flex -translate-x-1/2 items-center gap-2 rounded-full border border-stone-200 bg-white/90 px-4 py-2 text-xs font-medium text-stone-500 shadow-sm backdrop-blur">
+                      <Eye className="size-3.5" />
+                      Select a block to see its output
+                    </div>
+                  ) : null}
                 </div>
               </ResizablePanel>
               <ResizableHandle withHandle />

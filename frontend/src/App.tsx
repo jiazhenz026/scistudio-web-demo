@@ -263,6 +263,7 @@ export default function App() {
     bottomPanelPinned,
     setSelectedNodeId,
     setActiveBottomTab,
+    onNodeSelected: () => selectLeftTab("previewers"),
   });
   const readability = useCanvasReadability(handleNodeSelect);
   const { connected: wsConnected, status: wsStatus } = useWorkflowWebSocket(
