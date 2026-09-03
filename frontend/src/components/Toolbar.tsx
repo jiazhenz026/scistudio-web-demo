@@ -1,13 +1,11 @@
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { FolderInput, GraduationCap } from "lucide-react";
+import { GraduationCap } from "lucide-react";
 
 import type { ConnectionStatus } from "../hooks/connectionState";
 import { useAppStore } from "../store";
 import { shouldShowUnfinishedTutorialDot } from "../store/learningCenterSlice";
 import type { ProjectResponse } from "../types/api";
-import { BringInMyWorkDialog } from "./BringInMyWorkDialog";
-import { ENTRY_LABEL, NO_PROJECT_MESSAGE } from "./BringInMyWorkDialog.parts/copy";
 import { LEARNING_CENTER_ENTRY_LABEL } from "./LearningCenter";
 import { PackageManagerDialog } from "./PackageManagerDialog";
 import { FileOperationsGroup } from "./Toolbar.parts/FileOperationsGroup";
@@ -128,11 +126,6 @@ export function Toolbar(props: ToolbarProps) {
   // menu (desktop/menu.js → useDesktopMenuActions) can open it too.
   const packageManagerOpen = useAppStore((state) => state.packageManagerOpen);
   const setPackageManagerOpen = useAppStore((state) => state.setPackageManagerOpen);
-  // ADR-053 spec 2 (#2001) — the dialog is mounted only while open so its
-  // availability probe fires when the user asks for the feature, not on every
-  // app start. Store-backed for the same desktop-menu reason as above.
-  const bringInMyWorkOpen = useAppStore((state) => state.bringInMyWorkOpen);
-  const setBringInMyWorkOpen = useAppStore((state) => state.setBringInMyWorkOpen);
   /*
    * ADR-053 Learning Center (#2057) FR-082 — a PERMANENT entry, on the same
    * reasoning as "Bring in my work" beside it: nothing about progress decides
@@ -251,43 +244,9 @@ export function Toolbar(props: ToolbarProps) {
                 : LEARNING_CENTER_ENTRY_LABEL}
             </TooltipContent>
           </Tooltip>
-          {/*
-           * ADR-053 spec 2 (#2001) / FR-001 — "Bring in my work" is a
-           * PERMANENT toolbar entry. It is not gated on Learning Center
-           * progress, project count, or elapsed time: ADR-053 §4.2's threshold
-           * governs when the product VOLUNTEERS this capability, never whether
-           * it can be reached. It is also rendered for both tab kinds, since a
-           * user editing a file has the same existing analysis to carry across
-           * as one looking at a canvas.
-           *
-           * FR-002 — enabled when a project is open, disabled otherwise,
-           * because a session writes its blocks into a project.
-           */}
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                aria-label={ENTRY_LABEL}
-                className="relative inline-flex items-center gap-2 rounded-full border border-stone-300 px-3 py-1 text-xs font-medium text-stone-600 hover:bg-stone-100 disabled:opacity-50 disabled:hover:bg-transparent"
-                data-testid="toolbar-bring-in-my-work"
-                /* ADR-053 FR-011 (#2061) — the `bring_in_my_work_button`
-                 * highlight target: the work-import level ends by pointing
-                 * at the permanent entry the reader will use with their own
-                 * data. */
-                data-tutorial-target="bring_in_my_work_button"
-                disabled={!currentProject}
-                onClick={() => setBringInMyWorkOpen(true)}
-                type="button"
-              >
-                <FolderInput className="size-4" />
-                <span className="hidden xl:inline">{ENTRY_LABEL}</span>
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {currentProject
-                ? `${ENTRY_LABEL} — carry an analysis you already have into SciStudio`
-                : `${ENTRY_LABEL} — ${NO_PROJECT_MESSAGE}`}
-            </TooltipContent>
-          </Tooltip>
+          {/* Public WebMCP demo: "Bring in my work" is removed — it imports an
+           * existing local analysis into the project, which the ChatGPT-driven
+           * demo has no use for. */}
           {/* Public WebMCP demo: the Packages button is removed. The package
            * installer router it opened is withheld from the demo (its update
            * check was the source of the /api/packages/updates 404 noise), and
@@ -298,9 +257,6 @@ export function Toolbar(props: ToolbarProps) {
         onClose={() => setPackageManagerOpen(false)}
         open={packageManagerOpen}
       />
-      {bringInMyWorkOpen ? (
-        <BringInMyWorkDialog onClose={() => setBringInMyWorkOpen(false)} />
-      ) : null}
     </TooltipProvider>
   );
 }
