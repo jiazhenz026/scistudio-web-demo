@@ -45,6 +45,28 @@ _SAFE_PATH_ALLOWED_ROOTS: tuple[str, ...] = (
 )
 
 
+def _allowed_roots() -> tuple[str, ...]:
+    """Roots the file browser may enter.
+
+    Home and the system temp tree are where SciStudio projects and pytest
+    fixtures live on a desktop install. The public demo, though, keeps its
+    project at ``/data/demo`` — outside both — so the Browse buttons and the
+    tutorials would reject every path there ("path must be under user home or
+    system temp"). Add the demo project's tree in that mode so the browser can
+    reach the project's data files. Read at call time because the env is set
+    for the deployment, not baked into the module.
+    """
+    roots = list(_SAFE_PATH_ALLOWED_ROOTS)
+    from scistudio.public_demo import DEMO_PROJECT_ENV, is_public_demo
+
+    if is_public_demo():
+        demo = os.environ.get(DEMO_PROJECT_ENV, "").strip()
+        if demo:
+            roots.append(os.path.realpath(demo))
+            roots.append(os.path.realpath(os.path.dirname(demo)))
+    return tuple(roots)
+
+
 def _resolve_safe_path(user_path: str | Path) -> Path:
     """Resolve *user_path* and require it to live under an allowed root.
 
@@ -55,7 +77,7 @@ def _resolve_safe_path(user_path: str | Path) -> Path:
         Callers translate this to HTTP 400.
     """
     candidate = os.path.realpath(os.fspath(user_path))
-    for root in _SAFE_PATH_ALLOWED_ROOTS:
+    for root in _allowed_roots():
         try:
             if os.path.commonpath([root, candidate]) == root:
                 return Path(candidate)

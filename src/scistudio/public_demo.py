@@ -98,6 +98,13 @@ BLOCKED_ROUTERS: dict[str, str] = {
 }
 
 
+# Core tutorials withheld from the demo's Learning Center, by directory slug.
+# "what-ai-can-do" drives SciStudio's in-app AI assistant over a PTY, which the
+# demo withholds (ai_pty), so the tutorial cannot run here. The demo's AI story
+# is ChatGPT over WebMCP, not the in-app assistant.
+BLOCKED_TUTORIALS: frozenset[str] = frozenset({"what-ai-can-do"})
+
+
 # Built-in blocks withheld from the demo palette. Not CodeBlock — authoring and
 # running real Python is the demo's whole point. These two only ever fail here:
 #   - AIBlock (ai.agent) calls an external model on credentials the container

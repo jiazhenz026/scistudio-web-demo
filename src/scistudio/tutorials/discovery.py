@@ -537,8 +537,15 @@ def discover_tutorials(
     found: list[DiscoveredTutorial] = []
     sources: list[TutorialSource] = []
 
+    # Public demo: drop tutorials the deployment cannot run (the AI-assistant
+    # tutorial needs the withheld PTY). Filtered here, at the one discovery
+    # entry point, so the catalogue, the session, and progress all agree.
+    from scistudio.public_demo import BLOCKED_TUTORIALS, is_public_demo
+
+    _demo_blocked = BLOCKED_TUTORIALS if is_public_demo() else frozenset()
+
     for source in _sources(project_dir=project_dir, diagnostics=sink):
-        entries = _scan_source(source, env)
+        entries = [e for e in _scan_source(source, env) if e.directory.name not in _demo_blocked]
         if not entries:
             continue
         sources.append(source)
