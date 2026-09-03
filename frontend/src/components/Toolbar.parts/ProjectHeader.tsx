@@ -20,7 +20,7 @@ export function ProjectHeader({ currentProject, workflowName, workflowDirty }: P
         <p className="font-display text-lg leading-tight">SciStudio</p>
       </div>
       <div
-        className="hidden min-w-0 shrink xl:block xl:max-w-[80px] 2xl:max-w-[100px]"
+        className="hidden min-w-0 shrink lg:block lg:max-w-[80px] xl:max-w-[120px] 2xl:max-w-[160px]"
         data-testid="toolbar-project-meta"
       >
         <p
@@ -87,7 +87,7 @@ export function StatusPill({
       className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-medium ${pillClass}`}
     >
       <span className={`h-2 w-2 rounded-full ${dotClass}`} />
-      <span className="hidden xl:inline">{label}</span>
+      <span className="hidden lg:inline">{label}</span>
     </span>
   );
 }

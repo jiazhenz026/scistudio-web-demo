@@ -235,7 +235,7 @@ export function Toolbar(props: ToolbarProps) {
                 type="button"
               >
                 <GraduationCap className="size-4" />
-                <span className="hidden 2xl:inline">{LEARNING_CENTER_ENTRY_LABEL}</span>
+                <span className="hidden xl:inline">{LEARNING_CENTER_ENTRY_LABEL}</span>
                 {unfinishedTutorials ? (
                   <span
                     aria-label="Unfinished tutorials"
@@ -279,7 +279,7 @@ export function Toolbar(props: ToolbarProps) {
                 type="button"
               >
                 <FolderInput className="size-4" />
-                <span className="hidden 2xl:inline">{ENTRY_LABEL}</span>
+                <span className="hidden xl:inline">{ENTRY_LABEL}</span>
               </button>
             </TooltipTrigger>
             <TooltipContent>
