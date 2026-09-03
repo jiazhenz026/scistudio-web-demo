@@ -94,7 +94,10 @@ export function ActivityBar({ activeTab, panelOpen, onSelect }: ActivityBarProps
                 <Icon className="h-5 w-5" />
               </button>
             </TooltipTrigger>
-            <TooltipContent side="right">{label}</TooltipContent>
+            {/* Demo layout swap: the rail moved to the far RIGHT of the window,
+                so a right-side tooltip would render off-screen. Point it left,
+                into the panel, where there is room. */}
+            <TooltipContent side="left">{label}</TooltipContent>
           </Tooltip>
         );
       })}

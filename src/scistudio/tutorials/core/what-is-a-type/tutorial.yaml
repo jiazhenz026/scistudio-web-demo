@@ -709,25 +709,11 @@ steps:
         kind: block
         name: segment_cells
 
-  # 这里废话太多了，直接：The last one: your previewer can also be moved to your
-  # personal library. 这里让用户直接去previewer选all projects
-  #
-  # TODO(#2135): this step is not judged. The Previewers tab's card offers
-  #   Auto / This project / All projects, which records which previewer renders
-  #   an Image and at what scope — it does not move the file into the library,
-  #   and `library_contains` can only be satisfied by the editor toolbar's
-  #   "Move to My Library". Left unjudged rather than judged on something the
-  #   step does not ask for; raised with the owner 2026-08-23.
-  #   Followup: https://github.com/jiazhenz026/SciStudio/issues/2135
-  - id: save-the-previewer
-    title: And the previewer
-    route_to: previewers
-    highlight:
-      - ~
-      - previewer_palette
-    say:
-      - "The last one: your previewer can also be moved to your personal library."
-      - In the Previewers tab, find **Image** and choose **All projects**.
+  # The "save-the-previewer" step was removed for the web demo: the standalone
+  # Previewers sidebar was dropped from the demo layout, so "move your previewer
+  # to your personal library" (which routed to `previewers` and highlighted the
+  # previewer palette) has no surface to act in. save-the-block above now leads
+  # straight into the histogram beat below.
 
   # 最后统计表格出来以后，再加一个 histogram 步骤，交给 labmate 看。四句话：
   # 1. 我们最后出一个细胞size的histogram交给labmate去看。这里我们需要用到上一个
