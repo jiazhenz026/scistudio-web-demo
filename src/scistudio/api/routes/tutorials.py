@@ -1500,7 +1500,7 @@ def _asset_file(manifest: Any, relative: str, *, what: str) -> Path:
 
 
 @router.get("/catalogue", response_model=CatalogueResponse)
-async def get_catalogue(runtime: RuntimeDep) -> CatalogueResponse:
+def get_catalogue(runtime: RuntimeDep) -> CatalogueResponse:
     """List every installed tutorial, grouped by where it came from.
 
     Groups are ordered with the ones SciStudio ships first, and each carries its
@@ -1514,7 +1514,7 @@ async def get_catalogue(runtime: RuntimeDep) -> CatalogueResponse:
 
 
 @router.get("/progress", response_model=ProgressResponse)
-async def get_progress(runtime: RuntimeDep) -> ProgressResponse:
+def get_progress(runtime: RuntimeDep) -> ProgressResponse:
     """Report how many tutorials from each source have been completed."""
     groups = _tutorials(runtime).progress_groups()
     return ProgressResponse(
@@ -1537,7 +1537,7 @@ async def get_progress(runtime: RuntimeDep) -> ProgressResponse:
 
 
 @router.get("/sessions/active", response_model=SessionResponse | None)
-async def get_active_session(runtime: RuntimeDep) -> SessionResponse | None:
+def get_active_session(runtime: RuntimeDep) -> SessionResponse | None:
     """Return the tutorial currently running, or null when none is.
 
     A session whose tutorial project has been deleted from outside the product
@@ -1548,7 +1548,7 @@ async def get_active_session(runtime: RuntimeDep) -> SessionResponse | None:
 
 
 @router.post("/sessions", response_model=SessionResponse)
-async def start_session(body: StartSessionRequest, runtime: RuntimeDep) -> SessionResponse:
+def start_session(body: StartSessionRequest, runtime: RuntimeDep) -> SessionResponse:
     """Start a tutorial, resume it where it was left, or start it over.
 
     One tutorial runs at a time: starting a second while one is active is
@@ -1561,7 +1561,7 @@ async def start_session(body: StartSessionRequest, runtime: RuntimeDep) -> Sessi
 
 
 @router.post("/sessions/active/evaluate", response_model=SessionResponse)
-async def evaluate_active_session(runtime: RuntimeDep) -> SessionResponse:
+def evaluate_active_session(runtime: RuntimeDep) -> SessionResponse:
     """Re-check whether the current step is finished.
 
     Most steps finish on their own, when the product reports the change that
@@ -1574,7 +1574,7 @@ async def evaluate_active_session(runtime: RuntimeDep) -> SessionResponse:
 
 
 @router.post("/sessions/active/ui-event", response_model=SessionResponse)
-async def report_ui_event(body: UiEventRequest, runtime: RuntimeDep) -> SessionResponse:
+def report_ui_event(body: UiEventRequest, runtime: RuntimeDep) -> SessionResponse:
     """Report an interface action the user took, and re-check the step.
 
     Some steps ask for something that leaves no trace behind — enlarging the
@@ -1604,7 +1604,7 @@ async def report_ui_event(body: UiEventRequest, runtime: RuntimeDep) -> SessionR
 
 
 @router.post("/sessions/active/trigger", response_model=SessionResponse)
-async def trigger_active_step(runtime: RuntimeDep) -> SessionResponse:
+def trigger_active_step(runtime: RuntimeDep) -> SessionResponse:
     """Run the current step's user-triggered action (#2061).
 
     The step's trigger button posts here. The actions run to completion and
@@ -1618,7 +1618,7 @@ async def trigger_active_step(runtime: RuntimeDep) -> SessionResponse:
 
 
 @router.post("/sessions/active/replay-settled", response_model=SessionResponse)
-async def settle_active_replay(runtime: RuntimeDep) -> SessionResponse:
+def settle_active_replay(runtime: RuntimeDep) -> SessionResponse:
     """Report that a scripted reply has finished playing (#2083).
 
     The scripted agent window reveals a transcript at a speaking pace, so the
@@ -1636,14 +1636,14 @@ async def settle_active_replay(runtime: RuntimeDep) -> SessionResponse:
 
 
 @router.post("/sessions/active/continue", response_model=SessionResponse)
-async def continue_active_session(runtime: RuntimeDep) -> SessionResponse:
+def continue_active_session(runtime: RuntimeDep) -> SessionResponse:
     """Move on from a step that is only asking to be read."""
     tutorials = _tutorials(runtime)
     return _rendered(runtime, _acting(tutorials.continue_active))
 
 
 @router.post("/sessions/active/back", response_model=SessionResponse)
-async def back_active_session(runtime: RuntimeDep) -> SessionResponse:
+def back_active_session(runtime: RuntimeDep) -> SessionResponse:
     """Return to the step before this one (#2138).
 
     A cursor move over steps the session has already entered, not an undo: no
@@ -1656,7 +1656,7 @@ async def back_active_session(runtime: RuntimeDep) -> SessionResponse:
 
 
 @router.post("/sessions/active/leave", status_code=204)
-async def leave_active_session(runtime: RuntimeDep) -> Response:
+def leave_active_session(runtime: RuntimeDep) -> Response:
     """Leave the running tutorial without losing its progress.
 
     The tutorial's project and the step it reached are preserved, so starting it
