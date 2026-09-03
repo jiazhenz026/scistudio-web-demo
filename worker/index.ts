@@ -30,11 +30,19 @@ export class SciStudioContainer extends Container<Env> {
   // walked-away tab keeps billing until the window of true silence elapses;
   // 5m bounds how long that can run.
   sleepAfter = "5m";
-  // No outbound network. The demo needs none — WebMCP traffic is inbound, and
-  // everything the runtime uses is baked into the image — and closing egress
-  // removes cloud-metadata access, SSRF, and using the box as a jump host from
-  // the residual risk of running agent-authored code.
-  enableInternet = false;
+  // Outbound is open so the agent can pull from the scientific data APIs the
+  // demo chains with (UniProt, Ensembl, RCSB, AlphaFold, Open Targets, …), all
+  // of which are HTTPS. A hostname allowlist would need TLS interception, which
+  // re-signs the connection and breaks certificate validation for the Python
+  // clients in the image — it would block the very fetches it exists to permit.
+  //
+  // The residual risk of running agent-authored code with a network is instead
+  // held by the other layers: the Worker's password gate limits access to
+  // holders of the code, each session is its own container so one visitor's
+  // code cannot touch another's, the container carries no credentials in its
+  // environment, Cloudflare exposes no cloud-metadata endpoint to steal from,
+  // and the container is disposable. See DEPLOY.md.
+  enableInternet = true;
   envVars = {
     SCISTUDIO_PUBLIC_DEMO: "1",
     SCISTUDIO_DEMO_TRUST_UPSTREAM: "1",
