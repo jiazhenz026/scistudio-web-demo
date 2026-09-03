@@ -96,3 +96,13 @@ BLOCKED_ROUTERS: dict[str, str] = {
     # local operations (no clone/fetch/push, so no network reach), and any
     # effect is confined to the visitor's own per-session, disposable container.
 }
+
+
+# Built-in blocks withheld from the demo palette. Not CodeBlock — authoring and
+# running real Python is the demo's whole point. These two only ever fail here:
+#   - AIBlock (ai.agent) calls an external model on credentials the container
+#     does not carry, and the demo's agent is ChatGPT over WebMCP anyway.
+#   - AppBlock spawns an external desktop application (Fiji, ImageJ, …) that is
+#     not installed in the container, so a graph using it can never run.
+# Leaving a block the agent can add but never run just invites broken workflows.
+BLOCKED_BLOCK_CLASSES: frozenset[str] = frozenset({"AIBlock", "AppBlock"})

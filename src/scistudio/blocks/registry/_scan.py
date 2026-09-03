@@ -66,6 +66,15 @@ logger = logging.getLogger(__name__)
 
 
 def _register_spec(registry: BlockRegistry, spec: BlockSpec) -> None:
+    # Public demo: withhold AIBlock/AppBlock here — the single choke point every
+    # registration path goes through (direct builtins AND the scistudio.blocks
+    # entry points), so both are covered. Filtering only the builtins scan let
+    # the entry-point copies back in. See scistudio.public_demo.
+    from scistudio.public_demo import BLOCKED_BLOCK_CLASSES, is_public_demo
+
+    if is_public_demo() and spec.class_name in BLOCKED_BLOCK_CLASSES:
+        return
+
     _validate_capability_registration(registry, spec)
     registry._registry[spec.name] = spec
     if spec.type_name:
@@ -161,6 +170,8 @@ def _scan_builtins(registry: BlockRegistry) -> None:
         MergeCollection,
         PairEditor,
     ):
+        # AIBlock/AppBlock are withheld from the public demo in _register_spec,
+        # which also covers the scistudio.blocks entry-point copies.
         _register_spec(registry, _spec_from_class(cls, source="builtin"))
 
 
