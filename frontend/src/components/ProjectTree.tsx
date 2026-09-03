@@ -1,7 +1,6 @@
 import { useCallback, useState } from "react";
 
 import { useReloadFlash } from "../hooks/useReloadFlash";
-import { api } from "../lib/api";
 import { openDataFileAsPreview } from "../lib/openDataFile";
 import { useAppStore } from "../store";
 import type { TreeEntry } from "../types/api";
@@ -171,7 +170,6 @@ function handleDoubleClickRoute(
 
 export function ProjectTree({
   projectId,
-  projectPath,
   onLoadWorkflow,
   onReloadBlocks,
   rootPath = "",
@@ -211,15 +209,6 @@ export function ProjectTree({
     void navigator.clipboard.writeText(text);
     setContextMenu(null);
   }, []);
-
-  const handleReveal = useCallback(
-    (node: TreeNodeData) => {
-      const fullPath = `${projectPath}/${node.path}`.replace(/\//g, "/");
-      void api.revealInExplorer(fullPath);
-      setContextMenu(null);
-    },
-    [projectPath],
-  );
 
   const renderNodes = (nodes: TreeNodeData[], depth: number): React.ReactNode => {
     return nodes.map((node) => (
@@ -262,7 +251,6 @@ export function ProjectTree({
         onClose={() => setContextMenu(null)}
         onCopyName={copyToClipboard}
         onCopyPath={copyToClipboard}
-        onReveal={handleReveal}
       />
     </aside>
   );

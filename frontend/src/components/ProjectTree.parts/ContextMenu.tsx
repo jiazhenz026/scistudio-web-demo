@@ -3,14 +3,13 @@
  */
 import { useEffect, useRef } from "react";
 
-import type { ContextMenuState, TreeNodeData } from "./types";
+import type { ContextMenuState } from "./types";
 
 export interface ContextMenuProps {
   contextMenu: ContextMenuState | null;
   onClose: () => void;
   onCopyName: (name: string) => void;
   onCopyPath: (path: string) => void;
-  onReveal: (node: TreeNodeData) => void;
 }
 
 export function ContextMenu({
@@ -18,7 +17,6 @@ export function ContextMenu({
   onClose,
   onCopyName,
   onCopyPath,
-  onReveal,
 }: ContextMenuProps) {
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
@@ -56,13 +54,8 @@ export function ContextMenu({
       >
         Copy Path
       </button>
-      <button
-        className="w-full px-4 py-1.5 text-left text-xs text-stone-700 hover:bg-stone-100"
-        onClick={() => onReveal(contextMenu.node)}
-        type="button"
-      >
-        Reveal in Explorer
-      </button>
+      {/* "Reveal in Explorer" was here. This is a web-only deployment with no OS
+       * file manager to reveal into, so the entry is removed. */}
     </div>
   );
 }
