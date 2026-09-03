@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 import os
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -10,7 +11,7 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from scistudio.api.mcp_lifecycle import stop_project_mcp_server
 from scistudio.api.routes import (
@@ -37,10 +38,13 @@ from scistudio.api.routes import (
 )
 from scistudio.api.routes import workflow_watcher as workflow_watcher_module
 from scistudio.api.runtime import ApiRuntime
+from scistudio.public_demo import BLOCKED_ROUTERS, is_blocked_write, is_public_demo
 from scistudio.api.spa import SPAStaticFiles
 from scistudio.api.sse import sse_handler
 from scistudio.api.ws import websocket_handler
 from scistudio.engine.runners.process_handle import ProcessRegistry
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
@@ -268,6 +272,45 @@ def create_app() -> FastAPI:
 
     app.add_middleware(RequestLoggingMiddleware)
 
+    # Public demo: refuse the write verbs that would let a visitor put a file
+    # where the block scanner would execute it, or swap out the fixed demo
+    # project. Added after RequestLoggingMiddleware so it runs outside it and
+    # logs its own refusals; matching is prefix-based so new endpoints under
+    # these paths are refused by default (scistudio.public_demo).
+    if is_public_demo():
+
+        @app.middleware("http")
+        async def _refuse_public_demo_writes(request: Request, call_next: object) -> object:
+            if is_blocked_write(request.method, request.url.path):
+                logger.warning(
+                    "public-demo mode: refused %s %s from %s",
+                    request.method,
+                    request.url.path,
+                    request.client.host if request.client else "unknown",
+                )
+                return JSONResponse(
+                    status_code=403,
+                    content={
+                        "detail": (
+                            "This endpoint is disabled on the public SciStudio demo. "
+                            "Run SciStudio locally for the full runtime."
+                        )
+                    },
+                )
+            return await call_next(request)  # type: ignore[operator]
+
+
+    # Public WebMCP demo hardening (scistudio.api.public_demo). The withheld
+    # routers are the ones that hand an internet visitor a shell, a package
+    # installer, the host filesystem, or the deployment's credentials.
+    _public_demo = is_public_demo()
+    if _public_demo:
+        logger.warning(
+            "public-demo mode: withholding %d router(s): %s",
+            len(BLOCKED_ROUTERS),
+            ", ".join(sorted(BLOCKED_ROUTERS)),
+        )
+
     app.include_router(workflows.router)
     app.include_router(blocks.router)
     # ADR-053 §7 — the registered data type listing and the data-type template.
@@ -283,31 +326,39 @@ def create_app() -> FastAPI:
     # routed plot_artifact preview session (producer -> PlotPreviewer link).
     app.include_router(plots.router)
     app.include_router(tutorials.router)
-    app.include_router(packages.router)
+    if not _public_demo:  # withheld: public_demo.BLOCKED_ROUTERS
+        app.include_router(packages.router)
     # filesystem router must be registered BEFORE projects router because
     # the projects router uses {project_id:path} which would greedily
     # match /api/projects/{id}/tree as a project-id lookup.
-    app.include_router(filesystem.router)
+    if not _public_demo:  # withheld: public_demo.BLOCKED_ROUTERS
+        app.include_router(filesystem.router)
     app.include_router(projects.router)
     # ADR-053 §4 — the user-wide library write path. Registered beside the
     # project file endpoints it inverts (FR-007) rather than under them: its
     # target lives outside every project root, so it cannot hang off
     # ``/api/projects/{project_id}``.
-    app.include_router(user_library.router)
-    app.include_router(ai.router)
-    app.include_router(ai_pty.router)
+    if not _public_demo:  # withheld: public_demo.BLOCKED_ROUTERS
+        app.include_router(user_library.router)
+    if not _public_demo:  # withheld: public_demo.BLOCKED_ROUTERS
+        app.include_router(ai.router)
+    if not _public_demo:  # withheld: public_demo.BLOCKED_ROUTERS
+        app.include_router(ai_pty.router)
     # ADR-036 §3.3 — server-side ruff lint endpoint for the embedded editor.
-    app.include_router(lint.router)
+    if not _public_demo:  # withheld: public_demo.BLOCKED_ROUTERS
+        app.include_router(lint.router)
     # ADR-038 §5.2 — ``runs`` router (lineage REST surface, D38-2.4a).
     app.include_router(runs.router)
     # ADR-039 §3.5 — git endpoints (commit / log / diff / restore / branch
     # ops / merge / cherry-pick). D39-2.2b made these live. ADR-039 Addendum 1
     # (#1352) removed the stash CRUD surface (#1353).
-    app.include_router(git_routes.router)
+    if not _public_demo:  # withheld: public_demo.BLOCKED_ROUTERS
+        app.include_router(git_routes.router)
     # #1741/#1742: diagnostics — /api/version, /api/client-logs, /api/diagnostics/bundle.
     app.include_router(diagnostics.router)
     # ADR-053 §4 — Bring In My Work session spawn (POST /api/work-import/sessions).
-    app.include_router(work_import.router)
+    if not _public_demo:  # withheld: public_demo.BLOCKED_ROUTERS
+        app.include_router(work_import.router)
     # #2157: the shipped user documentation, read in the Learning Center.
     app.include_router(user_docs.router)
 

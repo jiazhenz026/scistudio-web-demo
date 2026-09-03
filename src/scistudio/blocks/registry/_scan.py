@@ -36,6 +36,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from scistudio.blocks.io.capabilities import FormatCapability
+from scistudio.public_demo import BLOCKED_BLOCK_CLASSES, is_public_demo
 from scistudio.core.dropins import (
     dropin_import_roots_for_block_dirs,
     evict_cached_bytecode,
@@ -139,6 +140,8 @@ def _scan_builtins(registry: BlockRegistry) -> None:
     The excluded classes remain importable for plugin development
     and tests.
     """
+    _public_demo = is_public_demo()
+
     from scistudio.blocks.ai.ai_block import AIBlock
     from scistudio.blocks.app import AppBlock
     from scistudio.blocks.code import CodeBlock
@@ -161,6 +164,13 @@ def _scan_builtins(registry: BlockRegistry) -> None:
         MergeCollection,
         PairEditor,
     ):
+        # Public demo: CodeBlock/AppBlock/AIBlock are the execution primitives
+        # (arbitrary interpreters, external processes, outbound provider calls).
+        # Withholding them leaves only blocks that move typed data between
+        # vetted in-process implementations.
+        if _public_demo and cls.__name__ in BLOCKED_BLOCK_CLASSES:
+            logger.info("public-demo mode: withholding block %s", cls.__name__)
+            continue
         _register_spec(registry, _spec_from_class(cls, source="builtin"))
 
 
@@ -235,6 +245,15 @@ def _scan_tier1(registry: BlockRegistry) -> None:
     from scistudio.blocks.registry._spec import _spec_from_class
 
     registry._dropin_failures = []
+
+    # Public demo: drop-in files execute as modules in the server process, and
+    # the project file write endpoint can put a ``.py`` where this scan will
+    # find it. Refusing the scan breaks that chain at the execution end; the
+    # write endpoint is refused separately. Both callers (initial scan and
+    # hot_reload) funnel through here, so this is the single choke point.
+    if is_public_demo():
+        logger.info("public-demo mode: tier-1 drop-in scanning disabled")
+        return
     import_roots = dropin_import_roots_for_block_dirs(registry._scan_dirs)
     _reject_shadowing_type_files(registry, import_roots)
 
