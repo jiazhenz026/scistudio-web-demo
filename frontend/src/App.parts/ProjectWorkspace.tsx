@@ -546,63 +546,27 @@ export function ProjectWorkspace(props: ProjectWorkspaceProps) {
 
   return (
     <div className="flex min-h-0 flex-1">
-      {/* #2090 — the VS Code-style icon rail sits OUTSIDE the resizable
-          group: it never resizes and stays visible when the panel is
-          collapsed, which is what makes the collapsed state discoverable. */}
-      <ActivityBar activeTab={leftTab} panelOpen={!paletteCollapsed} onSelect={onActivitySelect} />
+      {/* #2090 — the VS Code-style icon rail sits OUTSIDE the resizable group:
+          it never resizes and stays visible when the panel is collapsed, which
+          is what makes the collapsed state discoverable. Demo layout swap: it
+          now sits on the far RIGHT, beside the sidebar it drives (rendered after
+          the panel group below). */}
       <ResizablePanelGroup
         orientation="horizontal"
         className="min-h-0 flex-1"
         onLayoutChanged={(layout) => {
           const sizes = Object.values(layout);
-          const palette = sizes[0];
-          const preview = sizes[2];
+          // Demo layout swap: canvas is the FIRST panel now, the sidebar the
+          // SECOND, so the sidebar's persisted width is sizes[1] not sizes[0].
+          const palette = sizes[1];
           if (palette !== null && palette !== undefined && palette >= 4) {
             setPanelSize("palette", palette);
           }
-          if (preview !== null && preview !== undefined && preview >= 4) {
-            setPanelSize("preview", preview);
-          }
         }}
       >
-        {/* Left Sidebar — section content picked by the activity bar.
-            `minSize` is 10% rather than 4%: below roughly that the pane is
-            narrower than a single 80px tile plus the pane's own padding, so
-            the block grid clipped its tiles and the tip card had no room for
-            a title. The pane is still `collapsible` to 0%, so the narrow end
-            of the range is a real collapse instead of an unusable sliver. */}
-        <ResizablePanel
-          panelRef={leftPanelRef}
-          // Start collapsed when the persisted store says so, so reopening
-          // the app does not flash an open panel before the effect above
-          // can collapse it.
-          // Wider default than the old three-column layout (was 15%): with the
-          // right preview column gone, the freed width goes here so the left
-          // panel — which now also hosts the vertical Preview — is comfortable
-          // on a narrow split view.
-          defaultSize={paletteCollapsed ? "0%" : "24%"}
-          minSize="12%"
-          maxSize="42%"
-          collapsible
-          collapsedSize="0%"
-          onResize={(size) => {
-            // Codex P2 on #2106 — dragging the separator below `minSize`
-            // collapses the panel internally without touching the store,
-            // leaving the activity bar's click decision stale. Mirror the
-            // panel's collapsed state back into `paletteCollapsed` (the
-            // reverse direction — store → panel — is the effect above).
-            const collapsed = size.asPercentage <= 0.5;
-            if (collapsed !== useAppStore.getState().paletteCollapsed) {
-              useAppStore.setState({ paletteCollapsed: collapsed });
-            }
-          }}
-        >
-          <PaletteOrProjectPane {...props} previewPane={previewPane} />
-        </ResizablePanel>
-        <ResizableHandle withHandle />
-
-        {/* Center: Tab Bar + Canvas + Bottom Panel vertical split. Fills the
-         * width the removed right column freed. */}
+        {/* Canvas → now on the LEFT: Tab Bar + Canvas + Bottom Panel vertical
+         * split. Splitting it off from the sidebar removes the "us vs. the AI"
+         * seam the owner flagged when the sidebar sat next to ChatGPT. */}
         <ResizablePanel defaultSize="76%">
           <div className="flex h-full flex-col">
             <TabBar
@@ -690,10 +654,38 @@ export function ProjectWorkspace(props: ProjectWorkspaceProps) {
             </ResizablePanelGroup>
           </div>
         </ResizablePanel>
-        {/* The Data Preview right column was removed (#layout): the preview now
-         * lives in the left panel's Preview section. Two columns instead of
-         * three keeps the left panel usable on a narrow ChatGPT split view. */}
+        <ResizableHandle withHandle />
+
+        {/* Sidebar → now on the RIGHT — section content picked by the activity
+            bar. `minSize` is 12% rather than 4%: below roughly that the pane is
+            narrower than a single 80px tile plus the pane's own padding, so the
+            block grid clipped its tiles and the tip card had no room for a
+            title. Still `collapsible` to 0%, so the narrow end is a real
+            collapse instead of an unusable sliver. It also hosts the vertical
+            Preview, so the 24% default keeps it comfortable on a narrow split. */}
+        <ResizablePanel
+          panelRef={leftPanelRef}
+          defaultSize={paletteCollapsed ? "0%" : "24%"}
+          minSize="12%"
+          maxSize="42%"
+          collapsible
+          collapsedSize="0%"
+          onResize={(size) => {
+            // Codex P2 on #2106 — dragging the separator below `minSize`
+            // collapses the panel internally without touching the store,
+            // leaving the activity bar's click decision stale. Mirror the
+            // panel's collapsed state back into `paletteCollapsed` (the
+            // reverse direction — store → panel — is the effect above).
+            const collapsed = size.asPercentage <= 0.5;
+            if (collapsed !== useAppStore.getState().paletteCollapsed) {
+              useAppStore.setState({ paletteCollapsed: collapsed });
+            }
+          }}
+        >
+          <PaletteOrProjectPane {...props} previewPane={previewPane} />
+        </ResizablePanel>
       </ResizablePanelGroup>
+      <ActivityBar activeTab={leftTab} panelOpen={!paletteCollapsed} onSelect={onActivitySelect} />
     </div>
   );
 }

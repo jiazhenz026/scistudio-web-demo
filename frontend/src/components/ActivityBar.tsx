@@ -59,7 +59,7 @@ export function ActivityBar({ activeTab, panelOpen, onSelect }: ActivityBarProps
   return (
     <nav
       aria-label="Workspace sections"
-      className="flex w-12 shrink-0 flex-col items-center gap-1 border-r border-stone-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.95),_rgba(245,241,232,0.98))] py-2"
+      className="flex w-12 shrink-0 flex-col items-center gap-1 border-l border-stone-200 bg-[linear-gradient(180deg,_rgba(255,255,255,0.95),_rgba(245,241,232,0.98))] py-2"
       data-testid="activity-bar"
     >
       {ACTIVITY_BAR_ENTRIES.map(({ key, label, icon: Icon }) => {

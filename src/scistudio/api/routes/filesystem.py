@@ -275,22 +275,35 @@ async def browse_filesystem(
     If *path* is empty, returns the filesystem roots (drive letters on
     Windows; ``/`` on Linux/macOS).
     """
-    # Public demo: confine the web file browser to the active project. The
-    # default browse (empty path → roots → "/") lands on the container root,
-    # which is outside the sandbox and pointless to browse, so a Browse button —
-    # or a tutorial's Load-your-data step — failed with "path must be under user
-    # home or system temp". Start at the active project, and snap anything
-    # outside it back to its root, so Browse opens on the project's own files.
-    from scistudio.public_demo import is_public_demo
+    # Public demo: confine the web file browser to the demo project. The default
+    # browse (empty path → roots → "/") lands on the container root, which is
+    # outside the sandbox and pointless to browse, so a Browse button — or a
+    # tutorial's Load/Save step — failed with "path must be under user home or
+    # system temp", and its directory picker returned an empty path that left the
+    # "Select" button disabled. Start at the demo project and snap anything
+    # outside it back to its root, so Browse always opens on the project's files.
+    #
+    # The confine root is the fixed ``SCISTUDIO_DEMO_PROJECT`` (``/data/demo`` in
+    # the image), falling back to the active project only if the env is unset.
+    # It must NOT depend on ``runtime.active_project``: that is ``None`` whenever
+    # no project happens to be open (a just-started container, or the user closed
+    # the project), and keying the confine off it made the guard intermittently
+    # fall through to the container root — the source of both the "got /" error
+    # and the greyed-out "Select this folder" button in the save dialog.
+    from scistudio.public_demo import DEMO_PROJECT_ENV, is_public_demo
 
-    if is_public_demo() and runtime.active_project is not None:
-        root = os.path.realpath(runtime.active_project.path)
-        requested = os.path.realpath(path) if path else root
-        if requested != root and not requested.startswith(root + os.sep):
-            requested = root
-        target = Path(requested)
-        if target.is_dir():
-            return FilesystemBrowseResponse(path=str(target), entries=_list_directory(target))
+    if is_public_demo():
+        demo_root = os.environ.get(DEMO_PROJECT_ENV, "").strip()
+        if not demo_root and runtime.active_project is not None:
+            demo_root = runtime.active_project.path
+        if demo_root and os.path.isdir(demo_root):
+            root = os.path.realpath(demo_root)
+            requested = os.path.realpath(path) if path else root
+            if requested != root and not requested.startswith(root + os.sep):
+                requested = root
+            target = Path(requested)
+            if target.is_dir():
+                return FilesystemBrowseResponse(path=str(target), entries=_list_directory(target))
 
     if not path:
         return FilesystemBrowseResponse(path="", entries=_list_roots())

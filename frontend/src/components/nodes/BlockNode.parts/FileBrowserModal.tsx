@@ -281,7 +281,16 @@ export function FileBrowserModal({
             disabled={!canSelect}
             onClick={handleSelect}
           >
-            Select
+            {/* Directory mode saves to a *folder*, which may legitimately be
+             * empty (e.g. a Save block pointing at data/processed before the
+             * first run). Naming the action "Select this folder" makes clear the
+             * current folder is the target, so an empty listing no longer reads
+             * as "nothing to pick" with a dead button. */}
+            {mode === "directory_browser"
+              ? selectedEntry
+                ? "Select folder"
+                : "Select this folder"
+              : "Select"}
           </button>
         </div>
       </div>
