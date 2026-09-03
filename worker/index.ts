@@ -25,9 +25,11 @@ import { Container, getContainer } from "@cloudflare/containers";
 export class SciStudioContainer extends Container<Env> {
   // The port SciStudio listens on inside the image (see Dockerfile CMD).
   defaultPort = 8000;
-  // Reclaim an idle session's container. WebSocket traffic renews this, so an
-  // open SciStudio tab stays warm.
-  sleepAfter = "20m";
+  // Reclaim an idle session's container quickly. A short window matters because
+  // an open SciStudio tab holds a /ws connection that renews activity, so a
+  // walked-away tab keeps billing until the window of true silence elapses;
+  // 5m bounds how long that can run.
+  sleepAfter = "5m";
   // No outbound network. The demo needs none — WebMCP traffic is inbound, and
   // everything the runtime uses is baked into the image — and closing egress
   // removes cloud-metadata access, SSRF, and using the box as a jump host from
