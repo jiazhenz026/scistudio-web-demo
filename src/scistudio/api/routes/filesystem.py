@@ -283,19 +283,22 @@ async def browse_filesystem(
     # "Select" button disabled. Start at the demo project and snap anything
     # outside it back to its root, so Browse always opens on the project's files.
     #
-    # The confine root is the fixed ``SCISTUDIO_DEMO_PROJECT`` (``/data/demo`` in
-    # the image), falling back to the active project only if the env is unset.
-    # It must NOT depend on ``runtime.active_project``: that is ``None`` whenever
-    # no project happens to be open (a just-started container, or the user closed
-    # the project), and keying the confine off it made the guard intermittently
-    # fall through to the container root — the source of both the "got /" error
-    # and the greyed-out "Select this folder" button in the save dialog.
+    # The confine root is the ACTIVE project first — a tutorial opens its own
+    # bootstrap project (e.g. "Welcome to SciStudio") and seeds its data there,
+    # so browsing must follow the open project, not a fixed path. Only when no
+    # project is open (a just-started container, or the user closed the project)
+    # does it fall back to the fixed ``SCISTUDIO_DEMO_PROJECT`` (``/data/demo``),
+    # which keeps the guard from falling through to the container root — the
+    # source of both the "got /" error and the greyed-out "Select this folder"
+    # button. Getting this order wrong (env first) snapped browsing away from the
+    # tutorial project and made its seeded data/raw look empty.
     from scistudio.public_demo import DEMO_PROJECT_ENV, is_public_demo
 
     if is_public_demo():
-        demo_root = os.environ.get(DEMO_PROJECT_ENV, "").strip()
-        if not demo_root and runtime.active_project is not None:
+        if runtime.active_project is not None:
             demo_root = runtime.active_project.path
+        else:
+            demo_root = os.environ.get(DEMO_PROJECT_ENV, "").strip()
         if demo_root and os.path.isdir(demo_root):
             root = os.path.realpath(demo_root)
             requested = os.path.realpath(path) if path else root
