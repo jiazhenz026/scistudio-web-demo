@@ -33,6 +33,15 @@ router = APIRouter(prefix="/api/webmcp", tags=["webmcp"])
 
 ABOUT_SCISTUDIO = "about_scistudio"
 IMPORT_DATA = "import_data"
+WRITE_FILE = "write_file"
+
+# Project subdirectories write_file may write into. Authoring targets only:
+# block/plot/type source and workflow YAML. Anything outside these (or any
+# traversal) is refused, so the tool cannot write over the runtime's own state.
+_WRITE_FILE_PREFIXES: tuple[str, ...] = ("blocks/", "plots/", "types/", "workflows/", "docs/")
+
+# Extensions write_file accepts — source and text, never opaque binaries.
+_WRITE_FILE_EXTS: frozenset[str] = frozenset({".py", ".yaml", ".yml", ".json", ".md", ".txt"})
 
 # 10 MB, matching the project file-write cap (ADR-036 §3.2).
 _IMPORT_SIZE_CAP_BYTES = 10 * 1024 * 1024
@@ -72,9 +81,11 @@ You are talking to a live SciStudio instance, not a description of one.
 - **Read** the current graph, block configs, run status, produced data and its
   lineage.
 - **Edit** the graph — add blocks, wire ports, change configuration.
-- **Author** new blocks. `scaffold_block` writes a real Python block into the
-  project; `run_block_tests` executes it. This is the part that matters: when
-  no existing block does what the scientist asked, write one.
+- **Author** new blocks. `scaffold_block` lays down the skeleton, `write_file`
+  fills in the implementation (there is no Edit/Write here — `write_file` is how
+  you author source), `reload_blocks` registers it, and `run_block_tests`
+  executes it. This is the part that matters: when no existing block does what
+  the scientist asked, write one.
 - **Run** workflows and individual blocks, then inspect what came out.
 - **Plot** results through the plot contract.
 
@@ -278,12 +289,108 @@ def _import_data(arguments: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def _write_file_spec() -> dict[str, Any]:
+    return {
+        "name": WRITE_FILE,
+        "description": (
+            "Write a source file into the project — the tool to IMPLEMENT a block or "
+            "plot after scaffold_block/scaffold_plot generates its skeleton. Pass the "
+            "full file contents (this replaces the file). Allowed under blocks/, plots/, "
+            "types/, workflows/, or docs/, with a .py/.yaml/.json/.md/.txt extension. "
+            "After writing a block, call reload_blocks to pick it up and run_block_tests "
+            "to check it. For workflow YAML prefer write_workflow, which validates."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": (
+                        "Project-relative path, e.g. 'blocks/my_block.py'. Must start with "
+                        "blocks/, plots/, types/, workflows/, or docs/. No '..'."
+                    ),
+                },
+                "content": {"type": "string", "description": "The full file contents to write."},
+            },
+            "required": ["path", "content"],
+            "additionalProperties": False,
+        },
+        "category": "authoring",
+        "mutation": "write",
+    }
+
+
+def _write_file(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Write a source/text file under a project authoring directory.
+
+    The counterpart to scaffold_block/scaffold_plot: those lay down a skeleton,
+    this fills it in. Deliberately confined to the authoring subdirectories so a
+    stray path cannot overwrite runtime state, and to text/source extensions so
+    it is never used to smuggle a binary.
+    """
+    from scistudio.ai.agent.mcp._context import get_context
+
+    project_dir = get_context().project_dir
+    if project_dir is None:
+        return {"content": [{"type": "text", "text": "No project is open."}], "isError": True}
+
+    rel = str(arguments.get("path", "")).strip().replace("\\", "/").lstrip("/")
+    content = arguments.get("content", "")
+    if not isinstance(content, str):
+        return {"content": [{"type": "text", "text": "content must be a string."}], "isError": True}
+
+    if not rel or ".." in rel.split("/"):
+        return {
+            "content": [{"type": "text", "text": f"Invalid path {rel!r}: no traversal, project-relative only."}],
+            "isError": True,
+        }
+    if not rel.startswith(_WRITE_FILE_PREFIXES):
+        allowed = ", ".join(_WRITE_FILE_PREFIXES)
+        return {"content": [{"type": "text", "text": f"Path must be under one of: {allowed}"}], "isError": True}
+    if Path(rel).suffix.lower() not in _WRITE_FILE_EXTS:
+        allowed = ", ".join(sorted(_WRITE_FILE_EXTS))
+        return {"content": [{"type": "text", "text": f"Extension not allowed. Use one of: {allowed}"}], "isError": True}
+
+    payload = content.encode("utf-8")
+    if len(payload) > _IMPORT_SIZE_CAP_BYTES:
+        return {
+            "content": [
+                {"type": "text", "text": f"File is {len(payload)} bytes, over the {_IMPORT_SIZE_CAP_BYTES}-byte cap."}
+            ],
+            "isError": True,
+        }
+
+    target = (project_dir / rel).resolve()
+    # Defence in depth: confirm the resolved path is still inside the project.
+    if not str(target).startswith(str(project_dir.resolve()) + os.sep):
+        return {"content": [{"type": "text", "text": f"Refusing to write outside the project: {rel}"}], "isError": True}
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(dir=str(target.parent), prefix=".write-", suffix=target.suffix)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(payload)
+        os.replace(tmp_path, target)
+    except OSError as exc:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+        return {"content": [{"type": "text", "text": f"Could not write the file: {exc}"}], "isError": True}
+
+    logger.info("webmcp write_file: wrote %s (%d bytes)", rel, len(payload))
+    hint = ""
+    if rel.startswith("blocks/"):
+        hint = " Next: call reload_blocks to register it, then run_block_tests to check it."
+    elif rel.startswith("plots/"):
+        hint = " Next: validate_plot, then run_plot_job."
+    return {"content": [{"type": "text", "text": f"Wrote {len(payload)} bytes to {rel}.{hint}"}]}
+
+
 @router.get("/tools")
 async def list_webmcp_tools() -> dict[str, Any]:
     """Return the tool catalogue the SPA registers with ``registerTool()``."""
     from scistudio.ai.agent.mcp.server import mcp
 
-    tools: list[dict[str, Any]] = [_about_spec(), _import_data_spec()]
+    tools: list[dict[str, Any]] = [_about_spec(), _import_data_spec(), _write_file_spec()]
     for entry in await mcp.list_tools():
         tags = set(entry.tags or set())
         tools.append(
@@ -319,6 +426,9 @@ async def call_webmcp_tool(request: ToolCallRequest) -> dict[str, Any]:
 
     if request.name == IMPORT_DATA:
         return _import_data(request.arguments or {})
+
+    if request.name == WRITE_FILE:
+        return _write_file(request.arguments or {})
 
     known = {t.name for t in await mcp.list_tools()}
     if request.name not in known:
