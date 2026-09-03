@@ -50,6 +50,7 @@ interface Env {
 const SESSION_COOKIE = "scistudio_sid";
 const AUTH_COOKIE = "scistudio_auth";
 const LOGIN_PATH = "/_demo/login";
+const STARTING_PATH = "/_demo/starting";
 
 function readCookie(request: Request, name: string): string | null {
   const header = request.headers.get("cookie") ?? "";
@@ -115,6 +116,64 @@ function cookie(name: string, value: string, maxAge: number): string {
   return `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${maxAge}`;
 }
 
+/**
+ * Interstitial shown right after login while the session's container cold-starts.
+ *
+ * Served by the Worker itself, so it appears instantly without waiting on a
+ * container. It then polls /api/version — the first such request is what
+ * triggers and waits out the cold start — and navigates into the app once the
+ * container answers. Without this the browser sits on a blank page for the few
+ * seconds a first request is held open, which reads as a hang.
+ */
+function startingPage(): Response {
+  const html = `<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Starting SciStudio…</title>
+<style>
+  :root { color-scheme: light dark; }
+  * { box-sizing: border-box; }
+  body { margin:0; min-height:100vh; display:grid; place-items:center;
+    font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+    background:#0f1115; color:#e8eaed; }
+  .wrap { text-align:center; padding:2rem; }
+  .orbit { width:64px; height:64px; margin:0 auto 1.6rem; position:relative; }
+  .orbit span { position:absolute; inset:0; border-radius:50%;
+    border:2px solid transparent; border-top-color:#4c8dff; animation:spin 1s linear infinite; }
+  .orbit span:nth-child(2) { inset:9px; border-top-color:#7fb0ff; animation-duration:1.5s; opacity:.7; }
+  .orbit span:nth-child(3) { inset:18px; border-top-color:#a9caff; animation-duration:2s; opacity:.5; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+  h1 { font-size:1.05rem; font-weight:600; margin:0 0 .4rem; letter-spacing:-.01em; }
+  p { margin:0; color:#9aa0a6; font-size:.85rem; }
+  .dots::after { content:''; animation:dots 1.4s steps(4,end) infinite; }
+  @keyframes dots { 0%{content:''} 25%{content:'·'} 50%{content:'· ·'} 75%{content:'· · ·'} }
+</style>
+<div class="wrap">
+  <div class="orbit"><span></span><span></span><span></span></div>
+  <h1>Starting your private SciStudio session<span class="dots"></span></h1>
+  <p>First load provisions an isolated runtime — a few seconds.</p>
+</div>
+<script>
+  // Poll until the container answers, then enter the app. The first fetch is
+  // held open by the edge through the cold start; on any error, retry. After a
+  // generous ceiling, go to the app anyway rather than spin forever.
+  const started = Date.now();
+  async function poll() {
+    try {
+      const r = await fetch('/api/version', { credentials: 'same-origin', cache: 'no-store' });
+      if (r.ok) { location.replace('/'); return; }
+    } catch (_) { /* container not up yet */ }
+    if (Date.now() - started > 90000) { location.replace('/'); return; }
+    setTimeout(poll, 1200);
+  }
+  poll();
+</script>`;
+  return new Response(html, {
+    status: 200,
+    headers: { "content-type": "text/html; charset=utf-8", "cache-control": "no-store" },
+  });
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
@@ -133,7 +192,10 @@ export default {
       return new Response(null, {
         status: 303,
         headers: [
-          ["location", "/"],
+          // Land on the loading interstitial, not the app: the app's first
+          // request cold-starts the container, and the interstitial gives that
+          // wait a face instead of a blank page.
+          ["location", STARTING_PATH],
           ["set-cookie", cookie(AUTH_COOKIE, expected, 86400)],
           ["set-cookie", cookie(SESSION_COOKIE, sid, 86400)],
         ],
@@ -145,6 +207,12 @@ export default {
     const presented = readCookie(request, AUTH_COOKIE);
     if (!presented || !timingSafeEqual(presented, expected)) {
       return loginPage();
+    }
+
+    // The loading interstitial is served by the Worker, never the container —
+    // that is the whole point, it must appear before the container is up.
+    if (url.pathname === STARTING_PATH) {
+      return startingPage();
     }
 
     // Authenticated. Pin to this session's container, minting a session id if
