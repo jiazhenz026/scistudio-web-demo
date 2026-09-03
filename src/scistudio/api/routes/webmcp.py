@@ -35,10 +35,16 @@ ABOUT_SCISTUDIO = "about_scistudio"
 IMPORT_DATA = "import_data"
 WRITE_FILE = "write_file"
 READ_FILE = "read_file"
+RUN_BASH = "run_bash"
 
 # Cap on what read_file returns in one call. A file larger than this is
 # truncated with a note rather than flooding the agent's context.
 _READ_FILE_CAP_BYTES = 256 * 1024
+
+# run_bash limits: wall-clock kill, and how much stdout/stderr is returned so a
+# chatty command cannot flood the agent's context.
+_RUN_BASH_TIMEOUT_S = 60
+_RUN_BASH_OUTPUT_CAP = 32 * 1024
 
 # Project subdirectories write_file may write into. Authoring targets only:
 # block/plot/type source and workflow YAML. Anything outside these (or any
@@ -93,6 +99,10 @@ You are talking to a live SciStudio instance, not a description of one.
   the scientist asked, write one.
 - **Run** workflows and individual blocks, then inspect what came out.
 - **Plot** results through the plot contract.
+- **Inspect the sandbox** with `run_bash` (ls, cat, pip list) and install a
+  package the analysis needs with `pip install` — the container has internet and
+  the package is then importable by a CodeBlock. `read_file`/`write_file` read
+  and write project source.
 
 The user sees every change in the SciStudio UI as you make it, and can edit
 alongside you. Prefer small, visible steps over one large silent one.
@@ -450,12 +460,93 @@ def _read_file(arguments: dict[str, Any]) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": text}]}
 
 
+def _run_bash_spec() -> dict[str, Any]:
+    return {
+        "name": RUN_BASH,
+        "description": (
+            "Run a shell command inside the sandbox container, from the project "
+            "directory, and get back its stdout, stderr and exit code. Use it to "
+            "inspect the environment (ls, cat, which python, pip list) and to install "
+            "a Python package the analysis needs (pip install <pkg> — the container "
+            "has internet, and a package installed this way is importable by a "
+            "subsequent CodeBlock or run_block_tests). Runs as a non-root user in a "
+            f"per-session, disposable container; killed after {_RUN_BASH_TIMEOUT_S}s."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {"command": {"type": "string", "description": "The shell command to run."}},
+            "required": ["command"],
+            "additionalProperties": False,
+        },
+        "category": "environment",
+        "mutation": "write",
+    }
+
+
+def _run_bash(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Run one shell command in the container and return its output.
+
+    This is not a new capability boundary — CodeBlock already executes arbitrary
+    code — it is a direct, convenient surface for inspecting the sandbox and
+    installing a dependency on demand. Confined to what the container already
+    allows: a non-root user, no credentials in the environment, per-session and
+    disposable.
+    """
+    import shutil
+    import subprocess
+
+    command = str(arguments.get("command", ""))
+    if not command.strip():
+        return {"content": [{"type": "text", "text": "command is empty."}], "isError": True}
+
+    from scistudio.ai.agent.mcp._context import get_context
+
+    project_dir = get_context().project_dir
+    shell = shutil.which("bash") or "/bin/sh"
+    try:
+        proc = subprocess.run(
+            [shell, "-c", command],
+            cwd=str(project_dir) if project_dir is not None else None,
+            capture_output=True,
+            text=True,
+            errors="replace",
+            timeout=_RUN_BASH_TIMEOUT_S,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "content": [{"type": "text", "text": f"Command timed out after {_RUN_BASH_TIMEOUT_S}s and was killed."}],
+            "isError": True,
+        }
+    except OSError as exc:
+        return {"content": [{"type": "text", "text": f"Could not run the command: {exc}"}], "isError": True}
+
+    def _clip(text: str) -> str:
+        if len(text) <= _RUN_BASH_OUTPUT_CAP:
+            return text
+        return text[:_RUN_BASH_OUTPUT_CAP] + f"\n… [truncated at {_RUN_BASH_OUTPUT_CAP} bytes]"
+
+    logger.info("webmcp run_bash: exit=%s cmd=%.120s", proc.returncode, command)
+    body = (
+        f"exit code: {proc.returncode}\n"
+        f"--- stdout ---\n{_clip(proc.stdout or '')}\n"
+        f"--- stderr ---\n{_clip(proc.stderr or '')}"
+    )
+    return {"content": [{"type": "text", "text": body}], "isError": proc.returncode != 0}
+
+
 @router.get("/tools")
 async def list_webmcp_tools() -> dict[str, Any]:
     """Return the tool catalogue the SPA registers with ``registerTool()``."""
     from scistudio.ai.agent.mcp.server import mcp
 
-    tools: list[dict[str, Any]] = [_about_spec(), _import_data_spec(), _write_file_spec(), _read_file_spec()]
+    tools: list[dict[str, Any]] = [
+        _about_spec(),
+        _import_data_spec(),
+        _write_file_spec(),
+        _read_file_spec(),
+        _run_bash_spec(),
+    ]
     for entry in await mcp.list_tools():
         tags = set(entry.tags or set())
         tools.append(
@@ -497,6 +588,9 @@ async def call_webmcp_tool(request: ToolCallRequest) -> dict[str, Any]:
 
     if request.name == READ_FILE:
         return _read_file(request.arguments or {})
+
+    if request.name == RUN_BASH:
+        return _run_bash(request.arguments or {})
 
     known = {t.name for t in await mcp.list_tools()}
     if request.name not in known:
