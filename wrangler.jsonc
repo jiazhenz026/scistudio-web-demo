@@ -29,13 +29,16 @@
       // Container class below tells the Worker to talk to that port.
       "image": "./Dockerfile",
       "class_name": "SciStudioContainer",
-      // Each session holds a private container. Kept low on purpose: judges
-      // test a few at a time, and a low cap is the hard ceiling on worst-case
-      // spend — a burst beyond it degrades to a wait, not a bigger bill.
-      "max_instances": 5,
-      // 4 GiB / half a vCPU — SciStudio idles near 50 MB but a scanpy run on a
-      // single-cell matrix wants headroom.
-      "instance_type": "standard-1"
+      // Each session holds a private container. Raised to absorb a burst of
+      // judges plus stale sessions still winding down their sleepAfter window;
+      // real spend is bounded by concurrent use, not this cap.
+      "max_instances": 10,
+      // 2 vCPU. The cold start is dominated by importing the scientific stack
+      // (numpy/pandas/pyarrow/matplotlib) on first request; on half a vCPU that
+      // was ~60s, which reads as a hang. More cores cut the boot, and since a
+      // container is billed only while running, a faster boot is also less
+      // billed time — the larger instance is not simply more expensive.
+      "instance_type": "standard-3"
     }
   ],
 

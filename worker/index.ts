@@ -151,20 +151,26 @@ function startingPage(): Response {
 <div class="wrap">
   <div class="orbit"><span></span><span></span><span></span></div>
   <h1>Starting your private SciStudio session<span class="dots"></span></h1>
-  <p>First load provisions an isolated runtime — a few seconds.</p>
+  <p id="msg">Provisioning an isolated runtime — the first load can take up to a minute.</p>
 </div>
 <script>
-  // Poll until the container answers, then enter the app. The first fetch is
-  // held open by the edge through the cold start; on any error, retry. After a
-  // generous ceiling, go to the app anyway rather than spin forever.
+  // Enter the app only when the container actually answers with a real 200.
+  // During the cold start the edge returns 500s (the container's port is not
+  // up yet), so anything that is not an ok JSON response means "keep waiting".
+  // Never navigate to / on a timeout — that would just drop the user onto the
+  // same 500. Instead keep polling and, past a minute, reassure.
   const started = Date.now();
+  const msg = document.getElementById('msg');
   async function poll() {
     try {
       const r = await fetch('/api/version', { credentials: 'same-origin', cache: 'no-store' });
       if (r.ok) { location.replace('/'); return; }
     } catch (_) { /* container not up yet */ }
-    if (Date.now() - started > 90000) { location.replace('/'); return; }
-    setTimeout(poll, 1200);
+    const elapsed = Date.now() - started;
+    if (elapsed > 60000) {
+      msg.textContent = 'Still starting — a fresh runtime is booting the scientific stack. Hang tight.';
+    }
+    setTimeout(poll, 1500);
   }
   poll();
 </script>`;
