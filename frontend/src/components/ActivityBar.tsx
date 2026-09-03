@@ -38,7 +38,7 @@ const ACTIVITY_BAR_ENTRIES: readonly ActivityBarEntry[] = [
   { key: "workflows", label: "Workflows", icon: Waypoints },
   { key: "types", label: "Data types", icon: Shapes },
   { key: "data", label: "Data", icon: Database },
-  { key: "previewers", label: "Previewers", icon: Eye },
+  { key: "previewers", label: "Preview", icon: Eye },
   { key: "project", label: "Project", icon: FolderTree },
 ];
 

@@ -8,7 +8,7 @@
 // state wiring.
 
 import type { PanelImperativeHandle } from "react-resizable-panels";
-import { useEffect, useRef, type RefObject } from "react";
+import { useEffect, useRef, type ReactNode, type RefObject } from "react";
 
 import { useAppStore } from "../store";
 import { openDataFileAsPreview } from "../lib/openDataFile";
@@ -29,7 +29,6 @@ import { CodeEditor } from "../components/CodeEditor";
 import { DataPreview } from "../components/DataPreview";
 import { PreviewHost } from "../components/DataPreview.parts/PreviewHost";
 import { PaletteTipCard } from "../components/palette/tips/PaletteTipCard";
-import { PreviewerPalette } from "../components/PreviewerPalette";
 import { ProjectTree } from "../components/ProjectTree";
 import { useLibraryReveal } from "../components/promotion/revealInLibrary";
 import { TabBar } from "../components/TabBar";
@@ -159,7 +158,7 @@ export interface ProjectWorkspaceProps {
   setPanelSize: (key: "palette" | "preview" | "bottom", size: number) => void;
 }
 
-function PaletteOrProjectPane(props: ProjectWorkspaceProps) {
+function PaletteOrProjectPane(props: ProjectWorkspaceProps & { previewPane: ReactNode }) {
   const {
     leftTab,
     onLeftTabChange,
@@ -170,6 +169,7 @@ function PaletteOrProjectPane(props: ProjectWorkspaceProps) {
     paletteSearch,
     currentProject,
     onLoadWorkflowById,
+    previewPane,
   } = props;
 
   // ADR-053 FR-020 — a promotion has to leave the user looking at the item in
@@ -198,7 +198,14 @@ function PaletteOrProjectPane(props: ProjectWorkspaceProps) {
       {leftTab === "types" ? (
         <TypePalette />
       ) : leftTab === "previewers" ? (
-        <PreviewerPalette />
+        // Public WebMCP demo (#layout): the Previewers section now renders the
+        // live DataPreview of the selected node instead of the previewer-type
+        // list. On a narrow ChatGPT split view the third column was too tight;
+        // moving the preview into this tall-narrow left slot both frees that
+        // column and suits the previewers, which are designed for vertical
+        // display. The element is built by the parent (where the preview's
+        // inputs are in scope) and passed in as `previewPane`.
+        previewPane
       ) : leftTab === "blocks" ? (
         <BlockPalette
           blocks={blocks}
@@ -485,6 +492,57 @@ export function ProjectWorkspace(props: ProjectWorkspaceProps) {
         }
       : undefined;
 
+  // The live data preview of the selected node. Built here, where its inputs are
+  // in scope, and handed to PaletteOrProjectPane, which renders it in the left
+  // panel's Preview section (the old right column is gone — see below).
+  const previewPane = (
+    <DataPreview
+      blockOutputs={scopedBlockOutputs}
+      subworkflowPorts={subworkflowPorts}
+      selectedNodeId={selectedNodeId}
+      selectedNodeLabel={selectedNodeLabel}
+      selectedInputPorts={
+        selectedNode && selectedSchema
+          ? computeEffectivePorts(
+              selectedSchema.dynamic_ports ?? null,
+              selectedSchema.dynamic_ports?.source_config_key
+                ? (((selectedNode.config.params as Record<string, unknown> | undefined) ?? {})[
+                    selectedSchema.dynamic_ports.source_config_key
+                  ] as string | undefined)
+                : undefined,
+              resolveVariadicPorts(
+                selectedSchema.input_ports,
+                (selectedNode.config.params as Record<string, unknown> | undefined) ?? {},
+                "input",
+                selectedSchema,
+              ),
+              "input",
+            )
+          : undefined
+      }
+      selectedOutputPorts={
+        selectedNode && selectedSchema
+          ? computeEffectivePorts(
+              selectedSchema.dynamic_ports ?? null,
+              selectedSchema.dynamic_ports?.source_config_key
+                ? (((selectedNode.config.params as Record<string, unknown> | undefined) ?? {})[
+                    selectedSchema.dynamic_ports.source_config_key
+                  ] as string | undefined)
+                : undefined,
+              resolveVariadicPorts(
+                selectedSchema.output_ports,
+                (selectedNode.config.params as Record<string, unknown> | undefined) ?? {},
+                "output",
+                selectedSchema,
+              ),
+              "output",
+            )
+          : undefined
+      }
+      selectedSchema={selectedSchema}
+    />
+  );
+
   return (
     <div className="flex min-h-0 flex-1">
       {/* #2090 — the VS Code-style icon rail sits OUTSIDE the resizable
@@ -517,9 +575,13 @@ export function ProjectWorkspace(props: ProjectWorkspaceProps) {
           // Start collapsed when the persisted store says so, so reopening
           // the app does not flash an open panel before the effect above
           // can collapse it.
-          defaultSize={paletteCollapsed ? "0%" : "15%"}
-          minSize="10%"
-          maxSize="28%"
+          // Wider default than the old three-column layout (was 15%): with the
+          // right preview column gone, the freed width goes here so the left
+          // panel — which now also hosts the vertical Preview — is comfortable
+          // on a narrow split view.
+          defaultSize={paletteCollapsed ? "0%" : "24%"}
+          minSize="12%"
+          maxSize="42%"
           collapsible
           collapsedSize="0%"
           onResize={(size) => {
@@ -534,12 +596,13 @@ export function ProjectWorkspace(props: ProjectWorkspaceProps) {
             }
           }}
         >
-          <PaletteOrProjectPane {...props} />
+          <PaletteOrProjectPane {...props} previewPane={previewPane} />
         </ResizablePanel>
         <ResizableHandle withHandle />
 
-        {/* Center: Tab Bar + Canvas + Bottom Panel vertical split */}
-        <ResizablePanel defaultSize="63%">
+        {/* Center: Tab Bar + Canvas + Bottom Panel vertical split. Fills the
+         * width the removed right column freed. */}
+        <ResizablePanel defaultSize="76%">
           <div className="flex h-full flex-col">
             <TabBar
               tabs={tabs}
@@ -608,74 +671,9 @@ export function ProjectWorkspace(props: ProjectWorkspaceProps) {
             </ResizablePanelGroup>
           </div>
         </ResizablePanel>
-        <ResizableHandle withHandle />
-
-        {/* Data Preview — full height right column */}
-        <ResizablePanel
-          defaultSize="22%"
-          minSize="15%"
-          maxSize="42%"
-          collapsible
-          collapsedSize="0%"
-        >
-          <DataPreview
-            blockOutputs={scopedBlockOutputs}
-            subworkflowPorts={subworkflowPorts}
-            selectedNodeId={selectedNodeId}
-            selectedNodeLabel={selectedNodeLabel}
-            // #1326 port-info panel: resolve effective per-instance ports for
-            // the selected node.
-            //
-            // Hotfix 2026-05-23: ``node.config`` is a two-tier envelope where
-            // user-editable params live under ``node.config.params`` (see
-            // ``mergeNodeConfig``). The canvas-side BlockNode reads
-            // ``paramsOf(node) = node.config.params``; we mirror that here so
-            // both ``resolveVariadicPorts`` (variadic ports stored at
-            // ``params.{input,output}_ports``) AND ``computeEffectivePorts``
-            // (dynamic-port driving key at ``params.core_type``) see the
-            // same config the canvas sees. Reading ``node.config`` directly
-            // was a pre-existing bug that hid newly-added variadic ports
-            // from the panel and froze dynamic-port types at their
-            // schema-static fallback ``DataObject``.
-            selectedInputPorts={
-              selectedNode && selectedSchema
-                ? computeEffectivePorts(
-                    selectedSchema.dynamic_ports ?? null,
-                    selectedSchema.dynamic_ports?.source_config_key
-                      ? (((selectedNode.config.params as Record<string, unknown> | undefined) ??
-                          {})[selectedSchema.dynamic_ports.source_config_key] as string | undefined)
-                      : undefined,
-                    resolveVariadicPorts(
-                      selectedSchema.input_ports,
-                      (selectedNode.config.params as Record<string, unknown> | undefined) ?? {},
-                      "input",
-                      selectedSchema,
-                    ),
-                    "input",
-                  )
-                : undefined
-            }
-            selectedOutputPorts={
-              selectedNode && selectedSchema
-                ? computeEffectivePorts(
-                    selectedSchema.dynamic_ports ?? null,
-                    selectedSchema.dynamic_ports?.source_config_key
-                      ? (((selectedNode.config.params as Record<string, unknown> | undefined) ??
-                          {})[selectedSchema.dynamic_ports.source_config_key] as string | undefined)
-                      : undefined,
-                    resolveVariadicPorts(
-                      selectedSchema.output_ports,
-                      (selectedNode.config.params as Record<string, unknown> | undefined) ?? {},
-                      "output",
-                      selectedSchema,
-                    ),
-                    "output",
-                  )
-                : undefined
-            }
-            selectedSchema={selectedSchema}
-          />
-        </ResizablePanel>
+        {/* The Data Preview right column was removed (#layout): the preview now
+         * lives in the left panel's Preview section. Two columns instead of
+         * three keeps the left panel usable on a narrow ChatGPT split view. */}
       </ResizablePanelGroup>
     </div>
   );
