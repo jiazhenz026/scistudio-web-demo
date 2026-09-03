@@ -16,7 +16,6 @@ import {
   FileCode2,
   FilePlus2,
   FileText,
-  Import,
   PackagePlus,
   Save,
   SaveAll,
@@ -61,7 +60,6 @@ export function FileOperationsGroup({
   onNewNote,
   onNewPlot,
   onInstallPackage,
-  onImport,
   onSave,
   onSaveAs,
 }: FileOperationsGroupProps) {
@@ -128,7 +126,8 @@ export function FileOperationsGroup({
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
-      <ToolbarButton icon={Import} label="Import" disabled={!currentProject} onClick={onImport} />
+      {/* Public WebMCP demo: the Import button is removed to save toolbar space;
+       * the agent brings data in through the import_data WebMCP tool instead. */}
       <ToolbarButton
         icon={Save}
         label="Save"

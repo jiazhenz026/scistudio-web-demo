@@ -1,9 +1,8 @@
 import { Separator } from "@/components/ui/separator";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { FolderInput, GraduationCap, Package } from "lucide-react";
+import { FolderInput, GraduationCap } from "lucide-react";
 
 import type { ConnectionStatus } from "../hooks/connectionState";
-import { usePackageUpdates } from "../hooks/usePackageUpdates";
 import { useAppStore } from "../store";
 import { shouldShowUnfinishedTutorialDot } from "../store/learningCenterSlice";
 import type { ProjectResponse } from "../types/api";
@@ -134,7 +133,6 @@ export function Toolbar(props: ToolbarProps) {
   // app start. Store-backed for the same desktop-menu reason as above.
   const bringInMyWorkOpen = useAppStore((state) => state.bringInMyWorkOpen);
   const setBringInMyWorkOpen = useAppStore((state) => state.setBringInMyWorkOpen);
-  const { updateCount } = usePackageUpdates();
   /*
    * ADR-053 Learning Center (#2057) FR-082 — a PERMANENT entry, on the same
    * reasoning as "Bring in my work" beside it: nothing about progress decides
@@ -290,32 +288,10 @@ export function Toolbar(props: ToolbarProps) {
                 : `${ENTRY_LABEL} — ${NO_PROJECT_MESSAGE}`}
             </TooltipContent>
           </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                aria-label="Packages"
-                className="relative inline-flex items-center gap-2 rounded-full border border-stone-300 px-3 py-1 text-xs font-medium text-stone-600 hover:bg-stone-100"
-                onClick={() => setPackageManagerOpen(true)}
-                type="button"
-              >
-                <Package className="size-4" />
-                <span className="hidden xl:inline">Packages</span>
-                {updateCount > 0 ? (
-                  <span
-                    aria-label={`${updateCount} package update${updateCount === 1 ? "" : "s"} available`}
-                    className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-pine px-1 text-[10px] font-semibold text-white"
-                  >
-                    {updateCount}
-                  </span>
-                ) : null}
-              </button>
-            </TooltipTrigger>
-            <TooltipContent>
-              {updateCount > 0
-                ? `Packages — ${updateCount} update${updateCount === 1 ? "" : "s"} available`
-                : "Packages"}
-            </TooltipContent>
-          </Tooltip>
+          {/* Public WebMCP demo: the Packages button is removed. The package
+           * installer router it opened is withheld from the demo (its update
+           * check was the source of the /api/packages/updates 404 noise), and
+           * dropping it saves toolbar space on a narrow ChatGPT split view. */}
         </div>
       </header>
       <PackageManagerDialog

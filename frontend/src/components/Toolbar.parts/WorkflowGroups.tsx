@@ -2,7 +2,7 @@
  * Workflow-only toolbar groups (Run/Pause/Stop/Reload + Note/View-source).
  * Hidden when a file tab is active. Extracted in #1413.
  */
-import { Eye, Loader2, Play, RefreshCw, Square, StickyNote } from "lucide-react";
+import { Eye, Loader2, Play, Square, StickyNote } from "lucide-react";
 import { useEffect, useState } from "react";
 
 import { Separator } from "@/components/ui/separator";
@@ -26,7 +26,7 @@ export interface WorkflowGroupsProps {
 }
 
 function ExecutionControls(props: WorkflowGroupsProps) {
-  const { currentProject, workflowId, isRunning, onRun, onStop, onReloadBlocks } = props;
+  const { currentProject, workflowId, isRunning, onRun, onStop } = props;
   // #1789: the backend cancel blocks on the worker terminate grace period
   // (SIGTERM → wait → SIGKILL), so Stop looked dead for several seconds. Show an
   // optimistic "Stopping" state the instant it is clicked; clear it once the run
@@ -66,7 +66,8 @@ function ExecutionControls(props: WorkflowGroupsProps) {
         iconClassName={showStopping ? "animate-spin" : undefined}
         onClick={handleStop}
       />
-      <ToolbarButton icon={RefreshCw} label="Reload" onClick={onReloadBlocks} />
+      {/* Public WebMCP demo: Reload removed to save toolbar space (the agent has
+       * the reload_blocks tool if a re-scan is ever needed). */}
     </div>
   );
 }
