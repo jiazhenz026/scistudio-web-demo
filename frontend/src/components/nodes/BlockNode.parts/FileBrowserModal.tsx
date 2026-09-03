@@ -3,6 +3,11 @@
 // path-picker when the native OS dialog is unavailable. Opened by
 // `InlineTextInputField` via the "..." Browse button for fields whose
 // `ui_widget` is "file_browser" or "directory_browser".
+//
+// file_browser mode is MULTI-select: a Load block's `path` accepts an array,
+// and the native OS dialog already returns several files, so the in-app
+// fallback must too. Click a file to toggle it, double-click to pick just that
+// one. directory_browser stays single-select — a save target is one folder.
 
 import { useCallback, useEffect, useState } from "react";
 
@@ -37,7 +42,7 @@ interface EntryRowProps {
   currentPath: string;
   onToggleSelect: (name: string) => void;
   onNavigate: (dirName: string) => void;
-  onSelectFile: (path: string) => void;
+  onConfirmFile: (path: string) => void;
 }
 
 function EntryRow({
@@ -47,31 +52,43 @@ function EntryRow({
   currentPath,
   onToggleSelect,
   onNavigate,
-  onSelectFile,
+  onConfirmFile,
 }: EntryRowProps) {
   const isDir = entry.type === "directory";
-  const isSelectable = mode === "directory_browser" ? isDir : true;
+  // What this row can contribute to the selection: a directory in directory
+  // mode, a file in file mode. The other kind is shown (for navigation /
+  // context) but not selectable.
+  const isSelectable = isDir ? mode === "directory_browser" : mode === "file_browser";
   const sep = currentPath.includes("\\") ? "\\" : "/";
   return (
     <div
       className={`flex cursor-pointer items-center gap-2 rounded px-2 py-1.5 text-xs ${
         isSelected ? "bg-blue-50 text-sea" : "text-ink hover:bg-stone-50"
-      } ${!isSelectable && mode === "file_browser" && !isDir ? "opacity-50" : ""}`}
+      } ${!isSelectable ? "opacity-50" : ""}`}
       onClick={() => {
-        if (isDir && mode === "directory_browser") {
-          onToggleSelect(entry.name);
-        } else if (!isDir && mode === "file_browser") {
-          onToggleSelect(entry.name);
-        }
+        if (isSelectable) onToggleSelect(entry.name);
       }}
       onDoubleClick={() => {
         if (isDir) {
           onNavigate(entry.name);
         } else if (mode === "file_browser") {
-          onSelectFile(`${currentPath}${sep}${entry.name}`);
+          onConfirmFile(`${currentPath}${sep}${entry.name}`);
         }
       }}
     >
+      {/* Multi-select affordance: a checkbox for selectable files so it reads as
+          "tick several", not "pick one". Directories and the single-select
+          directory mode keep the plain icon. */}
+      {mode === "file_browser" && !isDir ? (
+        <span
+          aria-hidden
+          className={`flex size-3.5 shrink-0 items-center justify-center rounded-[3px] border text-[9px] leading-none ${
+            isSelected ? "border-sea bg-sea text-white" : "border-stone-300 text-transparent"
+          }`}
+        >
+          ✓
+        </span>
+      ) : null}
       <span className="shrink-0 text-sm">{isDir ? "📁" : "📄"}</span>
       <span className="min-w-0 flex-1 truncate">{entry.name}</span>
       {!isDir && entry.size !== null && entry.size !== undefined && (
@@ -85,12 +102,12 @@ interface EntryListProps {
   loading: boolean;
   error: string | null;
   entries: FilesystemEntry[];
-  selectedEntry: string | null;
+  selected: string[];
   mode: BrowserMode;
   currentPath: string;
   onToggleSelect: (name: string) => void;
   onNavigate: (dirName: string) => void;
-  onSelectFile: (path: string) => void;
+  onConfirmFile: (path: string) => void;
 }
 
 function EntryList(props: EntryListProps) {
@@ -98,12 +115,12 @@ function EntryList(props: EntryListProps) {
     loading,
     error,
     entries,
-    selectedEntry,
+    selected,
     mode,
     currentPath,
     onToggleSelect,
     onNavigate,
-    onSelectFile,
+    onConfirmFile,
   } = props;
   if (loading) return <p className="py-4 text-center text-xs text-stone-400">Loading...</p>;
   if (error) return <p className="py-4 text-center text-xs text-red-500">{error}</p>;
@@ -116,12 +133,12 @@ function EntryList(props: EntryListProps) {
         <EntryRow
           key={entry.name}
           entry={entry}
-          isSelected={selectedEntry === entry.name}
+          isSelected={selected.includes(entry.name)}
           mode={mode}
           currentPath={currentPath}
           onToggleSelect={onToggleSelect}
           onNavigate={onNavigate}
-          onSelectFile={onSelectFile}
+          onConfirmFile={onConfirmFile}
         />
       ))}
     </>
@@ -167,19 +184,25 @@ export function FileBrowserModal({
 }: {
   mode: BrowserMode;
   initialPath: string;
-  onSelect: (path: string) => void;
+  // Always an array. file_browser may return several paths; directory_browser
+  // returns exactly one. The caller (ConfigField.applySelectedPath) collapses a
+  // single-element array to a scalar for non-array fields.
+  onSelect: (paths: string[]) => void;
   onCancel: () => void;
 }) {
   const [currentPath, setCurrentPath] = useState("");
   const [entries, setEntries] = useState<FilesystemEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedEntry, setSelectedEntry] = useState<string | null>(null);
+  // Selected entry names within the CURRENT directory. file_browser accumulates
+  // several; directory_browser holds at most one.
+  const [selected, setSelected] = useState<string[]>([]);
 
   const loadDirectory = useCallback(async (dirPath: string) => {
     setLoading(true);
     setError(null);
-    setSelectedEntry(null);
+    // Selection is scoped to a directory; changing directory clears it.
+    setSelected([]);
     try {
       const resp = await api.browseFilesystem(dirPath);
       setCurrentPath(resp.path);
@@ -212,27 +235,41 @@ export function FileBrowserModal({
   };
 
   const handleToggleSelect = (name: string) =>
-    setSelectedEntry((prev) => (prev === name ? null : name));
+    setSelected((prev) => {
+      if (prev.includes(name)) return prev.filter((n) => n !== name);
+      // directory mode is single-select: a save target is one folder.
+      if (mode === "directory_browser") return [name];
+      return [...prev, name];
+    });
+
+  const join = (name: string) => {
+    const sep = currentPath.includes("\\") ? "\\" : "/";
+    return `${currentPath}${sep}${name}`;
+  };
 
   const handleSelect = () => {
     if (mode === "directory_browser") {
-      if (selectedEntry) {
-        const sep = currentPath.includes("\\") ? "\\" : "/";
-        onSelect(`${currentPath}${sep}${selectedEntry}`);
-      } else {
-        onSelect(currentPath);
-      }
-    } else if (selectedEntry) {
-      const sep = currentPath.includes("\\") ? "\\" : "/";
-      onSelect(`${currentPath}${sep}${selectedEntry}`);
+      onSelect([selected.length > 0 ? join(selected[0]) : currentPath]);
+      return;
+    }
+    if (selected.length > 0) {
+      onSelect(selected.map(join));
     }
   };
 
   const canSelect =
     mode === "directory_browser"
-      ? currentPath !== "" || selectedEntry !== null
-      : selectedEntry !== null &&
-        entries.some((e) => e.name === selectedEntry && e.type === "file");
+      ? currentPath !== "" || selected.length > 0
+      : selected.length > 0;
+
+  const selectLabel =
+    mode === "directory_browser"
+      ? selected.length > 0
+        ? "Select folder"
+        : "Select this folder"
+      : selected.length > 1
+        ? `Select ${selected.length} files`
+        : "Select file";
 
   return (
     <div
@@ -246,7 +283,7 @@ export function FileBrowserModal({
         {/* Header */}
         <div className="border-b border-stone-100 px-4 py-3">
           <div className="text-sm font-semibold text-ink">
-            {mode === "file_browser" ? "Select File" : "Select Directory"}
+            {mode === "file_browser" ? "Select Files" : "Select Directory"}
           </div>
           <Breadcrumbs currentPath={currentPath} onClick={handleBreadcrumbClick} />
         </div>
@@ -257,41 +294,41 @@ export function FileBrowserModal({
             loading={loading}
             error={error}
             entries={entries}
-            selectedEntry={selectedEntry}
+            selected={selected}
             mode={mode}
             currentPath={currentPath}
             onToggleSelect={handleToggleSelect}
             onNavigate={handleNavigate}
-            onSelectFile={onSelect}
+            onConfirmFile={(path) => onSelect([path])}
           />
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-2 border-t border-stone-100 px-4 py-2">
-          <button
-            type="button"
-            className="rounded border border-stone-200 px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50"
-            onClick={onCancel}
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            className="rounded bg-blue-500 px-3 py-1.5 text-xs text-white hover:bg-blue-600 disabled:opacity-40"
-            disabled={!canSelect}
-            onClick={handleSelect}
-          >
-            {/* Directory mode saves to a *folder*, which may legitimately be
-             * empty (e.g. a Save block pointing at data/processed before the
-             * first run). Naming the action "Select this folder" makes clear the
-             * current folder is the target, so an empty listing no longer reads
-             * as "nothing to pick" with a dead button. */}
-            {mode === "directory_browser"
-              ? selectedEntry
-                ? "Select folder"
-                : "Select this folder"
-              : "Select"}
-          </button>
+        <div className="flex items-center justify-between gap-2 border-t border-stone-100 px-4 py-2">
+          <span className="text-[11px] text-stone-400">
+            {mode === "file_browser"
+              ? selected.length > 0
+                ? `${selected.length} selected`
+                : "Click to select, double-click to open a folder"
+              : ""}
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              className="rounded border border-stone-200 px-3 py-1.5 text-xs text-stone-600 hover:bg-stone-50"
+              onClick={onCancel}
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="rounded bg-blue-500 px-3 py-1.5 text-xs text-white hover:bg-blue-600 disabled:opacity-40"
+              disabled={!canSelect}
+              onClick={handleSelect}
+            >
+              {selectLabel}
+            </button>
+          </div>
         </div>
       </div>
     </div>

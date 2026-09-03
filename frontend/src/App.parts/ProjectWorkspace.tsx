@@ -567,7 +567,7 @@ export function ProjectWorkspace(props: ProjectWorkspaceProps) {
         {/* Canvas → now on the LEFT: Tab Bar + Canvas + Bottom Panel vertical
          * split. Splitting it off from the sidebar removes the "us vs. the AI"
          * seam the owner flagged when the sidebar sat next to ChatGPT. */}
-        <ResizablePanel defaultSize="76%">
+        <ResizablePanel defaultSize="72%">
           <div className="flex h-full flex-col">
             <TabBar
               tabs={tabs}
@@ -665,7 +665,7 @@ export function ProjectWorkspace(props: ProjectWorkspaceProps) {
             Preview, so the 24% default keeps it comfortable on a narrow split. */}
         <ResizablePanel
           panelRef={leftPanelRef}
-          defaultSize={paletteCollapsed ? "0%" : "24%"}
+          defaultSize={paletteCollapsed ? "0%" : "28%"}
           minSize="12%"
           maxSize="42%"
           collapsible

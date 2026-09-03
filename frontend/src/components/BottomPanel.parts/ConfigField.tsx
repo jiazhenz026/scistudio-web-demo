@@ -215,8 +215,8 @@ function ScalarField({
         <FileBrowserModal
           mode={browseMode === "directory" ? "directory_browser" : "file_browser"}
           initialPath={modalInitialPath(browseMode, firstPathOf(currentValue))}
-          onSelect={(selectedPath) => {
-            applySelectedPath([selectedPath]);
+          onSelect={(selectedPaths) => {
+            applySelectedPath(selectedPaths);
             setBrowseOpen(false);
           }}
           onCancel={() => setBrowseOpen(false)}
