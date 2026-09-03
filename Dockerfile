@@ -38,6 +38,15 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
     SCISTUDIO_DEMO_PROJECT=/data/demo \
     SCISTUDIO_LOG_LEVEL=INFO
 
+# git is required: the History (lineage) tab and the pre-run auto-commit shell
+# out to it, and the slim base does not ship it. A system-wide identity so the
+# non-root runtime user's commits succeed without per-user config.
+RUN apt-get update \
+ && apt-get install -y --no-install-recommends git \
+ && rm -rf /var/lib/apt/lists/* \
+ && git config --system user.email "demo@scistudio.io" \
+ && git config --system user.name "SciStudio Demo"
+
 WORKDIR /src
 COPY pyproject.toml README.md ./
 COPY src/ ./src/
