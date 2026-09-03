@@ -18,6 +18,11 @@
 
   "observability": { "enabled": true },
 
+  // Serves the Worker at demo.scistudio.io. custom_domain lets Cloudflare create
+  // the DNS record and provision the certificate automatically, as long as the
+  // scistudio.io zone is on this same account.
+  "routes": [{ "pattern": "demo.scistudio.io", "custom_domain": true }],
+
   "containers": [
     {
       // Builds the repo-root Dockerfile. The container listens on 8000; the
