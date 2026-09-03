@@ -135,6 +135,16 @@ function cookie(name: string, value: string, maxAge: number): string {
  * throw here becomes a 500 in the browser. So: on that error, explicitly start
  * the container, wait for its port, and retry a few times with backoff.
  */
+// A stopped instance surfaces two different ways, and both must self-heal:
+//   1. container.fetch() THROWS "the container is not running…".
+//   2. Cloudflare RETURNS (does not throw) a 5xx whose body is
+//      "Error proxying request to container: The container is not running,
+//      consider calling start()". This one bypassed the catch entirely and
+//      leaked to the client — notably the ChatGPT WebMCP session, whose
+//      per-session container instance had been reclaimed while a browser tab
+//      on a different session stayed healthy.
+const COLD_CONTAINER = /not running|consider calling start|is not ready|starting|error proxying/i;
+
 async function fetchContainer(
   container: DurableObjectStub<SciStudioContainer>,
   request: Request,
@@ -142,11 +152,28 @@ async function fetchContainer(
   let lastError: unknown;
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
-      return await container.fetch(request.clone());
+      const response = await container.fetch(request.clone());
+      // Case 2: a returned 5xx carrying the proxy/cold-start signature. Peek a
+      // clone so the original body stays intact for the non-cold 5xx we pass
+      // through untouched (a genuine application 500 must still reach the SPA).
+      if (response.status >= 500) {
+        const body = await response.clone().text().catch(() => "");
+        if (COLD_CONTAINER.test(body)) {
+          lastError = body;
+          try {
+            await container.startAndWaitForPorts();
+          } catch {
+            // Best-effort; the retry below is what recovers.
+          }
+          await new Promise((resolve) => setTimeout(resolve, 500 * (attempt + 1)));
+          continue;
+        }
+      }
+      return response;
     } catch (error) {
       lastError = error;
-      const message = String(error);
-      if (!/not running|consider calling start|is not ready|starting/i.test(message)) {
+      // Case 1: a thrown cold-container error. Any other throw is a real fault.
+      if (!COLD_CONTAINER.test(String(error))) {
         throw error;
       }
       // Kick a start (idempotent if already starting) and wait before retrying.
