@@ -45,13 +45,19 @@ COPY --from=frontend /build/frontend/dist/ ./src/scistudio/api/static/
 
 # Plain install, never editable: an editable install would leave the source
 # tree on sys.path and writable-adjacent, which defeats the read-only rootfs.
-RUN pip install --no-cache-dir . \
+RUN pip install --no-cache-dir .
+
+# The single project the demo serves, baked into the image so a restart resets
+# it. provision.py copies the agent contract pages into its docs/, without
+# which get_doc and search_docs answer "no docs/ directory is visible".
+COPY demo/ /opt/demo/
+RUN scistudio init /data/demo \
+ && python /opt/demo/provision.py /data/demo \
  && rm -rf /src
 
-# The demo project is the only writable path. Runs, scaffolded blocks and
-# materialised artifacts all land here, and a restart resets it.
+# Non-root: /data is the only writable path. Runs, scaffolded blocks and
+# materialised artifacts all land there.
 RUN useradd --create-home --uid 10001 scistudio \
- && mkdir -p /data/demo \
  && chown -R scistudio:scistudio /data
 USER scistudio
 WORKDIR /data

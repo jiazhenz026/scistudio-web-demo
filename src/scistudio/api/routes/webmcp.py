@@ -54,14 +54,15 @@ alongside you. Prefer small, visible steps over one large silent one.
 
 ## Before you author anything
 
-Block and plot code must satisfy a contract. Do not guess it — read it:
+Block and plot code must satisfy a contract. Do not guess it — read it. The
+pages live in this project's `docs/`:
 
-- `get_doc("block-contract")` — before writing a block class
-- `get_doc("data-types")` — before constructing or reading a DataObject
-- `get_doc("workflow-schema")` — before editing workflow YAML
-- `get_doc("plot-contract")` — before writing a plot
-- `get_doc("public-api")` — the public/private import boundary
-- `search_docs(query)` — when you do not know which page answers a question
+- `get_doc(path="block-contract.md")` — before writing a block class
+- `get_doc(path="data-types.md")` — before constructing or reading a DataObject
+- `get_doc(path="workflow-schema.md")` — before editing workflow YAML
+- `get_doc(path="plot-contract.md")` — before writing a plot
+- `get_doc(path="public-api.md")` — the public/private import boundary
+- `search_docs(query="...")` — when you do not know which page answers a question
 
 ## Suggested first move
 

@@ -40,7 +40,7 @@ from scistudio.api.routes import webmcp
 from scistudio.api.routes import workflow_watcher as workflow_watcher_module
 from scistudio.api.runtime import ApiRuntime
 from scistudio.api.demo_auth import DemoAuthMiddleware
-from scistudio.public_demo import BLOCKED_ROUTERS, demo_password, is_public_demo
+from scistudio.public_demo import BLOCKED_ROUTERS, DEMO_PROJECT_ENV, demo_password, is_public_demo
 from scistudio.api.spa import SPAStaticFiles
 from scistudio.api.sse import sse_handler
 from scistudio.api.ws import websocket_handler
@@ -63,6 +63,24 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     runtime = ApiRuntime()
     app.state.runtime = runtime
     app.state.registry = ProcessRegistry()
+
+    # ---- Public demo: open the single baked-in project ----
+    # A visitor arrives through ChatGPT's browser with no project picker and no
+    # reason to know SciStudio has projects at all. Every MCP tool that resolves
+    # a path — get_doc, scaffold_block, run_workflow — needs an active project
+    # to resolve against, so opening it here is what makes the tool surface work
+    # at all rather than a convenience. Best-effort, matching how the MCP server
+    # start below is treated: a failure is logged and the app still comes up.
+    if is_public_demo():
+        _demo_dir = os.environ.get(DEMO_PROJECT_ENV, "").strip()
+        if _demo_dir:
+            try:
+                runtime.open_project(_demo_dir)
+                logger.info("public-demo mode: opened project %s", _demo_dir)
+            except Exception:
+                logger.exception("public-demo mode: could not open project %s", _demo_dir)
+        else:
+            logger.warning("public-demo mode: %s unset; no project will be open", DEMO_PROJECT_ENV)
 
     # ---- ADR-035 §3.10 IPC token ----
     # Audit P1-B (Codex #861-1): the engine must export

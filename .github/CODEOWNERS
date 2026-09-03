@@ -1,7 +1,0 @@
-# Default owners for everything
-* @zjzcpj
-
-# CI and repo config
-/.github/ @zjzcpj
-pyproject.toml @zjzcpj
-.pre-commit-config.yaml @zjzcpj
