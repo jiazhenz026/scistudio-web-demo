@@ -1,0 +1,12 @@
+.git
+.worktrees
+.workflow
+**/node_modules
+**/__pycache__
+**/*.pyc
+frontend/dist
+desktop
+docs
+tests
+.venv
+*.dmg

@@ -1,0 +1,27 @@
+# Render blueprint for the public SciStudio WebMCP demo.
+#
+# Connect this repository in the Render dashboard and it builds the Dockerfile
+# at the repo root. Everything security-relevant is decided in the image and in
+# src/scistudio/public_demo.py; the settings here only shape the deployment.
+
+services:
+  - type: web
+    name: scistudio-web
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: starter
+    region: oregon
+    healthCheckPath: /api/version
+    autoDeploy: true
+    envVars:
+      # Withholds the execution primitives. The image sets this too; naming it
+      # here keeps the blueprint honest about what the deployment relies on.
+      - key: SCISTUDIO_PUBLIC_DEMO
+        value: "1"
+      - key: SCISTUDIO_DEMO_PROJECT
+        value: /data/demo
+      - key: SCISTUDIO_LOG_LEVEL
+        value: INFO
+      # No persistent disk on purpose: every restart resets the demo project to
+      # what shipped in the image, so one visitor cannot leave state for the
+      # next one.
