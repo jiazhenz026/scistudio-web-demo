@@ -267,6 +267,7 @@ def _list_directory(directory: Path) -> list[FilesystemEntry]:
 
 @router.get("/api/filesystem/browse", response_model=FilesystemBrowseResponse)
 async def browse_filesystem(
+    runtime: RuntimeDep,
     path: str = Query("", description="Directory path to list. Empty string returns filesystem roots."),
 ) -> FilesystemBrowseResponse:
     """Return one level of directory listing at *path*.
@@ -274,6 +275,23 @@ async def browse_filesystem(
     If *path* is empty, returns the filesystem roots (drive letters on
     Windows; ``/`` on Linux/macOS).
     """
+    # Public demo: confine the web file browser to the active project. The
+    # default browse (empty path → roots → "/") lands on the container root,
+    # which is outside the sandbox and pointless to browse, so a Browse button —
+    # or a tutorial's Load-your-data step — failed with "path must be under user
+    # home or system temp". Start at the active project, and snap anything
+    # outside it back to its root, so Browse opens on the project's own files.
+    from scistudio.public_demo import is_public_demo
+
+    if is_public_demo() and runtime.active_project is not None:
+        root = os.path.realpath(runtime.active_project.path)
+        requested = os.path.realpath(path) if path else root
+        if requested != root and not requested.startswith(root + os.sep):
+            requested = root
+        target = Path(requested)
+        if target.is_dir():
+            return FilesystemBrowseResponse(path=str(target), entries=_list_directory(target))
+
     if not path:
         return FilesystemBrowseResponse(path="", entries=_list_roots())
 
