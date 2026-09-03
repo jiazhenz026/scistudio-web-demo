@@ -46,7 +46,11 @@ DEMO_PROJECT_ENV = "SCISTUDIO_DEMO_PROJECT"
 """Absolute path of the single project the public demo serves."""
 
 DEMO_PASSWORD_ENV = "SCISTUDIO_DEMO_PASSWORD"
-"""Shared password for the demo. Absent means the demo refuses to serve."""
+"""Shared password for the in-app gate. Empty means no in-app gate."""
+
+DEMO_TRUST_UPSTREAM_ENV = "SCISTUDIO_DEMO_TRUST_UPSTREAM"
+"""Set when a proxy in front (e.g. the Cloudflare Worker) already authenticated
+the request. The app then runs no password of its own — see the app factory."""
 
 
 def is_public_demo() -> bool:
@@ -57,6 +61,17 @@ def is_public_demo() -> bool:
 def demo_password() -> str:
     """Return the configured demo password, or an empty string if unset."""
     return os.environ.get(DEMO_PASSWORD_ENV, "").strip()
+
+
+def demo_trust_upstream() -> bool:
+    """Return whether an upstream proxy is trusted to have authenticated.
+
+    True only makes the app fail-open on auth because it is unreachable except
+    through that proxy: a Cloudflare-Containers deployment starts a container
+    only after the Worker has checked the password, and the container has no
+    public address of its own. Never set this on a directly-reachable host.
+    """
+    return os.environ.get(DEMO_TRUST_UPSTREAM_ENV, "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 # Routers withheld from the demo. The list is short on purpose: each entry is

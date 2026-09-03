@@ -10,3 +10,12 @@ docs
 tests
 .venv
 *.dmg
+
+# Cloudflare Worker tooling — built and deployed by wrangler, never part of the
+# SciStudio container image the Dockerfile builds.
+worker
+wrangler.jsonc
+tsconfig.json
+package.json
+package-lock.json
+.wrangler

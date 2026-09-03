@@ -40,7 +40,13 @@ from scistudio.api.routes import webmcp
 from scistudio.api.routes import workflow_watcher as workflow_watcher_module
 from scistudio.api.runtime import ApiRuntime
 from scistudio.api.demo_auth import DemoAuthMiddleware
-from scistudio.public_demo import BLOCKED_ROUTERS, DEMO_PROJECT_ENV, demo_password, is_public_demo
+from scistudio.public_demo import (
+    BLOCKED_ROUTERS,
+    DEMO_PROJECT_ENV,
+    demo_password,
+    demo_trust_upstream,
+    is_public_demo,
+)
 from scistudio.api.spa import SPAStaticFiles
 from scistudio.api.sse import sse_handler
 from scistudio.api.ws import websocket_handler
@@ -293,24 +299,44 @@ def create_app() -> FastAPI:
     app.add_middleware(RequestLoggingMiddleware)
 
     # Public WebMCP demo. The runtime is left intact on purpose — the demo
-    # exists to show an agent authoring and running real analysis code — so the
-    # password is the access control and only routers the demo has no use for
-    # are withheld. See scistudio.public_demo.
+    # exists to show an agent authoring and running real analysis code — so
+    # access control is the whole story and only routers the demo has no use
+    # for are withheld. See scistudio.public_demo.
+    #
+    # Two access-control shapes, because the two deployments gate at different
+    # layers:
+    #   - password    — a single-container deployment (e.g. Render) gates inside
+    #                    the app with DemoAuthMiddleware.
+    #   - upstream     — a one-container-per-session deployment (Cloudflare
+    #                    Containers) gates at the Worker BEFORE a container is
+    #                    ever started, so an unauthenticated request cannot even
+    #                    spin one up. The container then trusts that boundary and
+    #                    runs no password of its own, so the user is not asked
+    #                    twice. Only reachable via the Worker, never directly.
+    # Absent both a password and the upstream-trust flag, the demo fails closed.
     _public_demo = is_public_demo()
     if _public_demo:
         _password = demo_password()
-        if not _password:
-            raise RuntimeError(
-                "SCISTUDIO_PUBLIC_DEMO is set but SCISTUDIO_DEMO_PASSWORD is empty. "
-                "The demo executes agent-authored code and refuses to serve unauthenticated."
+        if _password:
+            # Added last, so it is the outermost layer and refuses before any
+            # other middleware or route sees the request.
+            app.add_middleware(DemoAuthMiddleware, password=_password)
+            logger.warning(
+                "public-demo mode: in-app password gate active; withholding router(s): %s",
+                ", ".join(sorted(BLOCKED_ROUTERS)),
             )
-        # Added last, so it is the outermost layer and refuses before any other
-        # middleware or route sees the request.
-        app.add_middleware(DemoAuthMiddleware, password=_password)
-        logger.warning(
-            "public-demo mode: password gate active; withholding router(s): %s",
-            ", ".join(sorted(BLOCKED_ROUTERS)),
-        )
+        elif demo_trust_upstream():
+            logger.warning(
+                "public-demo mode: auth delegated upstream (SCISTUDIO_DEMO_TRUST_UPSTREAM); "
+                "withholding router(s): %s",
+                ", ".join(sorted(BLOCKED_ROUTERS)),
+            )
+        else:
+            raise RuntimeError(
+                "SCISTUDIO_PUBLIC_DEMO is set but neither SCISTUDIO_DEMO_PASSWORD nor "
+                "SCISTUDIO_DEMO_TRUST_UPSTREAM is configured. The demo executes "
+                "agent-authored code and refuses to serve without an access boundary."
+            )
 
     app.include_router(workflows.router)
     app.include_router(blocks.router)
