@@ -15,7 +15,13 @@ carrying 500 lines of reference into every conversation.
 
 from __future__ import annotations
 
+import base64
+import binascii
+import contextlib
 import logging
+import os
+import tempfile
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -26,6 +32,24 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/webmcp", tags=["webmcp"])
 
 ABOUT_SCISTUDIO = "about_scistudio"
+IMPORT_DATA = "import_data"
+
+# 10 MB, matching the project file-write cap (ADR-036 §3.2).
+_IMPORT_SIZE_CAP_BYTES = 10 * 1024 * 1024
+
+# Extensions LoadData can actually open. Importing anything else leaves a file
+# no block can load — which is exactly the dead end a browser agent hit when it
+# fetched raw FASTA and could not turn it into a data asset. The tool refuses
+# those up front and says why.
+_LOADABLE_EXTS: dict[str, str] = {
+    ".csv": "DataFrame",
+    ".tsv": "DataFrame",
+    ".json": "DataFrame",
+    ".parquet": "DataFrame",
+    ".npy": "Array",
+    ".npz": "Array",
+    ".pkl": "DataFrame",
+}
 
 _ABOUT_TEXT = """\
 # SciStudio
@@ -56,6 +80,14 @@ You are talking to a live SciStudio instance, not a description of one.
 
 The user sees every change in the SciStudio UI as you make it, and can edit
 alongside you. Prefer small, visible steps over one large silent one.
+
+## Bringing in external data
+
+To use data you fetched elsewhere (a table from a scientific database, say),
+call `import_data` with it shaped into a loadable format (csv/tsv/json/parquet/
+npy) — not a raw format like FASTA. That lands a file under data/raw/; a raw
+file is not a data asset until a LoadData block loads it, so then add a LoadData
+block pointing at the returned path and run the workflow.
 
 ## Before you author anything
 
@@ -102,12 +134,156 @@ def _about_spec() -> dict[str, Any]:
     }
 
 
+def _import_data_spec() -> dict[str, Any]:
+    return {
+        "name": IMPORT_DATA,
+        "description": (
+            "Save data you have in hand (e.g. a table you fetched from a scientific "
+            "database) into the current SciStudio project so a workflow can use it. "
+            "Pass the data ALREADY in a format LoadData can open — csv, tsv, json, "
+            "parquet, npy, or npz — not a raw format like FASTA; shape sequences or "
+            "records into a csv/json table first. This writes a file under data/raw/ "
+            "and returns its path. The file is NOT yet a data asset: add a LoadData "
+            "block whose config.path is the returned path and config.core_type is the "
+            "returned core_type, then run the workflow — only then does it appear in "
+            "list_data."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "filename": {
+                    "type": "string",
+                    "description": (
+                        "File name with a loadable extension, e.g. 'proteins.csv'. "
+                        "Saved under the project's data/raw/. No path separators."
+                    ),
+                },
+                "content": {
+                    "type": "string",
+                    "description": "The file content. Text for csv/tsv/json; base64 for binary (set encoding).",
+                },
+                "encoding": {
+                    "type": "string",
+                    "enum": ["text", "base64"],
+                    "default": "text",
+                    "description": "'text' for csv/tsv/json; 'base64' for binary formats (parquet/npy/npz).",
+                },
+            },
+            "required": ["filename", "content"],
+            "additionalProperties": False,
+        },
+        "category": "data",
+        "mutation": "write",
+    }
+
+
+def _import_data(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Write caller-supplied data under the active project's ``data/raw/``.
+
+    Deliberately narrow: it only lands a loadable file and reports how to turn
+    it into a data asset. It does not add the LoadData block itself, because the
+    agent may not have a workflow open yet — the returned ``next_step`` tells it
+    what to do next.
+    """
+    from scistudio.ai.agent.mcp._context import get_context
+
+    project_dir = get_context().project_dir
+    if project_dir is None:
+        return {
+            "content": [{"type": "text", "text": "No project is open, so there is nowhere to import data."}],
+            "isError": True,
+        }
+
+    raw_name = str(arguments.get("filename", "")).strip()
+    # Basename only: a project-relative path or traversal is rejected rather
+    # than sanitised, so the agent gets a clear error instead of a file landing
+    # somewhere it did not expect.
+    if not raw_name or raw_name != os.path.basename(raw_name) or raw_name.startswith("."):
+        return {
+            "content": [
+                {"type": "text", "text": f"Invalid filename {raw_name!r}: pass a bare name like 'proteins.csv'."}
+            ],
+            "isError": True,
+        }
+
+    ext = Path(raw_name).suffix.lower()
+    if ext not in _LOADABLE_EXTS:
+        loadable = ", ".join(sorted(_LOADABLE_EXTS))
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": (
+                        f"Extension {ext!r} is not loadable by SciStudio. Convert the data to one of: "
+                        f"{loadable}. For sequences or records, shape them into a csv or json table first."
+                    ),
+                }
+            ],
+            "isError": True,
+        }
+
+    encoding = str(arguments.get("encoding", "text")).lower()
+    content = arguments.get("content", "")
+    if not isinstance(content, str):
+        return {"content": [{"type": "text", "text": "content must be a string."}], "isError": True}
+    if encoding == "base64":
+        try:
+            payload = base64.b64decode(content, validate=True)
+        except (binascii.Error, ValueError) as exc:
+            return {"content": [{"type": "text", "text": f"content is not valid base64: {exc}"}], "isError": True}
+    else:
+        payload = content.encode("utf-8")
+
+    if len(payload) > _IMPORT_SIZE_CAP_BYTES:
+        return {
+            "content": [
+                {
+                    "type": "text",
+                    "text": f"Data is {len(payload)} bytes, over the {_IMPORT_SIZE_CAP_BYTES}-byte import cap.",
+                }
+            ],
+            "isError": True,
+        }
+
+    raw_dir = project_dir / "data" / "raw"
+    raw_dir.mkdir(parents=True, exist_ok=True)
+    target = raw_dir / raw_name
+
+    # Atomic write, mirroring the project file-write endpoint: a temp file in the
+    # destination dir, then os.replace, so a failure never leaves a partial file.
+    fd, tmp_path = tempfile.mkstemp(dir=str(raw_dir), prefix=".import-", suffix=ext)
+    try:
+        with os.fdopen(fd, "wb") as fh:
+            fh.write(payload)
+        os.replace(tmp_path, target)
+    except OSError as exc:
+        with contextlib.suppress(OSError):
+            os.unlink(tmp_path)
+        return {"content": [{"type": "text", "text": f"Could not write the file: {exc}"}], "isError": True}
+
+    rel_path = f"data/raw/{raw_name}"
+    core_type = _LOADABLE_EXTS[ext]
+    logger.info("webmcp import_data: wrote %s (%d bytes)", rel_path, len(payload))
+    return {
+        "content": [
+            {
+                "type": "text",
+                "text": (
+                    f"Saved {len(payload)} bytes to {rel_path}. This is a FILE, not yet a data asset. "
+                    f"Next: add a LoadData block with config.path='{rel_path}' and "
+                    f"config.core_type='{core_type}', then run the workflow — after that it appears in list_data."
+                ),
+            }
+        ],
+    }
+
+
 @router.get("/tools")
 async def list_webmcp_tools() -> dict[str, Any]:
     """Return the tool catalogue the SPA registers with ``registerTool()``."""
     from scistudio.ai.agent.mcp.server import mcp
 
-    tools: list[dict[str, Any]] = [_about_spec()]
+    tools: list[dict[str, Any]] = [_about_spec(), _import_data_spec()]
     for entry in await mcp.list_tools():
         tags = set(entry.tags or set())
         tools.append(
@@ -140,6 +316,9 @@ async def call_webmcp_tool(request: ToolCallRequest) -> dict[str, Any]:
 
     if request.name == ABOUT_SCISTUDIO:
         return {"content": [{"type": "text", "text": _ABOUT_TEXT}]}
+
+    if request.name == IMPORT_DATA:
+        return _import_data(request.arguments or {})
 
     known = {t.name for t in await mcp.list_tools()}
     if request.name not in known:
