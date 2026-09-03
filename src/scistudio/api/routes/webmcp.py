@@ -34,6 +34,11 @@ router = APIRouter(prefix="/api/webmcp", tags=["webmcp"])
 ABOUT_SCISTUDIO = "about_scistudio"
 IMPORT_DATA = "import_data"
 WRITE_FILE = "write_file"
+READ_FILE = "read_file"
+
+# Cap on what read_file returns in one call. A file larger than this is
+# truncated with a note rather than flooding the agent's context.
+_READ_FILE_CAP_BYTES = 256 * 1024
 
 # Project subdirectories write_file may write into. Authoring targets only:
 # block/plot/type source and workflow YAML. Anything outside these (or any
@@ -385,12 +390,72 @@ def _write_file(arguments: dict[str, Any]) -> dict[str, Any]:
     return {"content": [{"type": "text", "text": f"Wrote {len(payload)} bytes to {rel}.{hint}"}]}
 
 
+def _read_file_spec() -> dict[str, Any]:
+    return {
+        "name": READ_FILE,
+        "description": (
+            "Read a text file from anywhere inside the current project — the general "
+            "counterpart to write_file, for inspecting a scaffolded block, a workflow "
+            "YAML, a data file, or project.yaml. Give a project-relative path. Returns "
+            "the file's text (truncated with a note if very large). Confined to the "
+            "project; it cannot read outside it."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "path": {
+                    "type": "string",
+                    "description": "Project-relative path, e.g. 'blocks/my_block.py' or 'project.yaml'. No '..'.",
+                }
+            },
+            "required": ["path"],
+            "additionalProperties": False,
+        },
+        "category": "authoring",
+        "mutation": "read",
+    }
+
+
+def _read_file(arguments: dict[str, Any]) -> dict[str, Any]:
+    """Read a project-relative text file, confined to the project directory."""
+    from scistudio.ai.agent.mcp._context import get_context
+
+    project_dir = get_context().project_dir
+    if project_dir is None:
+        return {"content": [{"type": "text", "text": "No project is open."}], "isError": True}
+
+    rel = str(arguments.get("path", "")).strip().replace("\\", "/").lstrip("/")
+    if not rel or ".." in rel.split("/"):
+        return {
+            "content": [{"type": "text", "text": f"Invalid path {rel!r}: no traversal, project-relative only."}],
+            "isError": True,
+        }
+
+    target = (project_dir / rel).resolve()
+    root = project_dir.resolve()
+    if target != root and not str(target).startswith(str(root) + os.sep):
+        return {"content": [{"type": "text", "text": f"Refusing to read outside the project: {rel}"}], "isError": True}
+    if not target.is_file():
+        return {"content": [{"type": "text", "text": f"No such file: {rel}"}], "isError": True}
+
+    try:
+        raw = target.read_bytes()
+    except OSError as exc:
+        return {"content": [{"type": "text", "text": f"Could not read the file: {exc}"}], "isError": True}
+
+    truncated = len(raw) > _READ_FILE_CAP_BYTES
+    text = raw[:_READ_FILE_CAP_BYTES].decode("utf-8", "replace")
+    if truncated:
+        text += f"\n\n… [truncated at {_READ_FILE_CAP_BYTES} bytes of {len(raw)}]"
+    return {"content": [{"type": "text", "text": text}]}
+
+
 @router.get("/tools")
 async def list_webmcp_tools() -> dict[str, Any]:
     """Return the tool catalogue the SPA registers with ``registerTool()``."""
     from scistudio.ai.agent.mcp.server import mcp
 
-    tools: list[dict[str, Any]] = [_about_spec(), _import_data_spec(), _write_file_spec()]
+    tools: list[dict[str, Any]] = [_about_spec(), _import_data_spec(), _write_file_spec(), _read_file_spec()]
     for entry in await mcp.list_tools():
         tags = set(entry.tags or set())
         tools.append(
@@ -429,6 +494,9 @@ async def call_webmcp_tool(request: ToolCallRequest) -> dict[str, Any]:
 
     if request.name == WRITE_FILE:
         return _write_file(request.arguments or {})
+
+    if request.name == READ_FILE:
+        return _read_file(request.arguments or {})
 
     known = {t.name for t in await mcp.list_tools()}
     if request.name not in known:
