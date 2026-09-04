@@ -116,6 +116,42 @@ a public URL, several layers keep that capability bounded:
   actually exercises — writing blocks, running workflows, executing
   agent-authored code — stays live behind the password.
 
+## Acknowledgements
+
+SciStudio-web stands on a lot of open source. Thank you to the maintainers of:
+
+**The WebMCP integration**
+- [WebMCP](https://github.com/webmachinelearning/webmcp) — the browser
+  tool-registration API this entry is built around
+- [FastMCP](https://github.com/jlowin/fastmcp) — the MCP server the tool
+  catalogue is served from
+
+**Backend & runtime**
+- [FastAPI](https://fastapi.tiangolo.com/), [Starlette](https://www.starlette.io/),
+  [Uvicorn](https://www.uvicorn.org/), [Pydantic](https://docs.pydantic.dev/) —
+  the API layer
+- [NumPy](https://numpy.org/), [pandas](https://pandas.pydata.org/),
+  [Zarr](https://zarr.dev/), [PyArrow](https://arrow.apache.org/),
+  [matplotlib](https://matplotlib.org/) — the scientific data & plotting stack
+- [Typer](https://typer.tiangolo.com/), [PyYAML](https://pyyaml.org/) /
+  [ruamel.yaml](https://yaml.readthedocs.io/),
+  [watchdog](https://github.com/gorakhargosh/watchdog),
+  [xxhash](https://github.com/ifduyue/python-xxhash)
+
+**Frontend**
+- [React](https://react.dev/) + [Vite](https://vite.dev/),
+  [Zustand](https://zustand-demo.pmnd.rs/)
+- [React Flow](https://reactflow.dev/) (`@xyflow/react`) — the workflow canvas
+- [Monaco Editor](https://microsoft.github.io/monaco-editor/) — the code editor
+- [Plotly.js](https://plotly.com/javascript/) — interactive plots
+- [xterm.js](https://xtermjs.org/) — the embedded terminal
+- [Radix UI](https://www.radix-ui.com/), [Tailwind CSS](https://tailwindcss.com/),
+  [Lucide](https://lucide.dev/)
+
+**Infrastructure**
+- [Cloudflare Workers & Containers](https://developers.cloudflare.com/containers/)
+  — the demo's front door and per-session isolation
+
 ## License
 
 Apache License 2.0. See [LICENSE](LICENSE). SciStudio-web is a redeploy of
