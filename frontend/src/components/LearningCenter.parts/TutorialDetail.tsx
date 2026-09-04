@@ -110,23 +110,35 @@ export function TutorialDetail({
        * installation guide, and a reader who never reaches the last beat —
        * most readers, on a first pass — should still be able to get there.
        */}
-      <p className="text-sm leading-6 text-stone-600">
-        {beatSegments(entry.summary).map((segment, index) =>
-          segment.doc === null ? (
-            <span key={index}>{segment.text}</span>
-          ) : (
-            <button
-              className="font-medium text-pine underline decoration-pine/40 underline-offset-2 hover:decoration-pine"
-              data-testid="tutorial-summary-doc-link"
-              key={index}
-              onClick={() => requestUserGuidePage(segment.doc as string)}
-              type="button"
-            >
-              {segment.text}
-            </button>
-          ),
-        )}
-      </p>
+      {/* Rendered a paragraph per blank line so a longer summary — e.g. the
+          first-run "letter" tutorial — keeps its paragraph breaks instead of
+          collapsing to one block. `whitespace-pre-line` keeps single newlines
+          within a paragraph (a signature line, say). Scrolls when it overflows
+          so the Start button below stays reachable. */}
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto">
+        {entry.summary.split(/\n{2,}/).map((paragraph, paragraphIndex) => (
+          <p
+            className="whitespace-pre-line text-sm leading-6 text-stone-600"
+            key={paragraphIndex}
+          >
+            {beatSegments(paragraph).map((segment, index) =>
+              segment.doc === null ? (
+                <span key={index}>{segment.text}</span>
+              ) : (
+                <button
+                  className="font-medium text-pine underline decoration-pine/40 underline-offset-2 hover:decoration-pine"
+                  data-testid="tutorial-summary-doc-link"
+                  key={index}
+                  onClick={() => requestUserGuidePage(segment.doc as string)}
+                  type="button"
+                >
+                  {segment.text}
+                </button>
+              ),
+            )}
+          </p>
+        ))}
+      </div>
 
       {/* FR-085 — unavailable always says why, or the user cannot act on it. */}
       {entry.state === "unavailable" && entry.unavailable_reason ? (
@@ -135,7 +147,7 @@ export function TutorialDetail({
         </p>
       ) : null}
 
-      <div className="mt-auto">
+      <div className="shrink-0">
         {confirmingRestart ? (
           <div
             className="rounded-xl border border-stone-300 bg-stone-50 p-3"

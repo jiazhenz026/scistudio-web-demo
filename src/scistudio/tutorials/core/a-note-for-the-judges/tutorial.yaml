@@ -1,0 +1,38 @@
+# A reading-only "tutorial" whose whole point is its detail screen: a short
+# letter to the judges, shown before anyone presses Start. It sorts to the front
+# (order: 0) so the first-run Learning Center opens on it.
+#
+# The letter lives in `summary`, which TutorialDetail renders a paragraph per
+# blank line — so the blank lines below are load-bearing; keep them. No
+# `bootstrap`, so it creates no project. The single step exists only so Start has
+# somewhere to go; the letter is meant to be read on the detail screen, not
+# inside.
+manifest_version: 1
+id: a-note-for-the-judges
+title: A note for the judges
+summary: |
+  Dear OpenAI Team,
+
+  I built SciStudio because I wasn't satisfied with scientific agents like Rosalind or Claude Science. Scientists find them hard to use because they are AI-chat centered. But scientists want to see the data the whole way through — every intermediate step, all the way to the result. And I throw away the analysis script every time a session ends, because I have no good way to reuse or automate it.
+
+  I also realized that interactive, UI-driven data processing is sometimes more efficient than chatting with an agent. So I built SciStudio: a workflow engine where both a human and an AI can drive the analysis together, with the data in clear view and interactive (you can edit the data by hand).
+
+  I hope you like it! And if you don't, please at least take a look at the third tutorial (what AI can do).
+
+  What you have here is a fully functional system, with 3 tutorials and 1 demo project. The tutorials are real ones, written for my users (I wish I had...); they introduce the basic concepts and functions of SciStudio. I made it play like a game, so it's actually pretty fun. The demo project is the one shown in the video: the AI builds reusable and reproducible pipelines, with data visualization and integration with other ChatGPT tools. Last but not least, you can absolutely create a new project and explore with ChatGPT on your own real-world problem.
+
+  I hope this project gives you some inspiration for what to create. I'm a biologist — I don't understand where AI development is heading, but this project is what a scientist genuinely hopes for. Thank you for reading this far, and I hope you have fun.
+
+  Jiazhen
+order: 0
+
+requires:
+  scistudio: ">=0.3.1"
+  agent: false
+  packages: []
+
+steps:
+  - id: enjoy
+    title: Enjoy
+    say:
+      - "success: Enjoy exploring SciStudio — and thank you again for taking a look."
