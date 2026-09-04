@@ -1,9 +1,14 @@
+import { MessageSquare } from "lucide-react";
+
 import type { BlockSchemaResponse, LogEntry, WorkflowEdge, WorkflowNode } from "../types/api";
 import type { BottomTab } from "../types/ui";
+
+import { useAppStore } from "../store";
 
 import { GitTab } from "./Git/GitTab";
 import { LineageTab } from "./Lineage/LineageTab";
 
+import { TerminalTabs } from "./AIChat/TerminalTabs";
 import { ConfigPanel } from "./BottomPanel.parts/ConfigPanel";
 import { LogViewer } from "./BottomPanel.parts/LogViewer";
 import { PlotsTab } from "./BottomPanel.parts/PlotsTab";
@@ -52,6 +57,28 @@ function PlaceholderTab() {
   );
 }
 
+// Public WebMCP demo: what the AI Chat tab shows when no scripted tutorial
+// replay is running. The demo's live agent is ChatGPT over WebMCP, so this tab
+// is not a working in-app chat here — it exists to host the "what-ai-can-do"
+// tutorial's scripted session. Rendering a placeholder (rather than the live
+// TerminalTabs) means no PTY is spawned until a replay actually needs one.
+function AiTabPlaceholder() {
+  return (
+    <div className="flex h-full items-center justify-center p-6 text-center">
+      <div className="max-w-md">
+        <MessageSquare className="mx-auto mb-3 size-6 text-stone-400" aria-hidden="true" />
+        <p className="text-sm font-medium text-stone-600">AI Chat</p>
+        <p className="mt-1 text-sm text-stone-500">
+          In this demo your live AI partner is ChatGPT, connected over WebMCP. This
+          tab hosts the guided <span className="font-medium">“What AI can do”</span>{" "}
+          tutorial — start it from the Learning Center and a scripted SciStudio agent
+          session plays out right here.
+        </p>
+      </div>
+    </div>
+  );
+}
+
 export function BottomPanel({
   activeTab,
   selectedNode,
@@ -72,6 +99,14 @@ export function BottomPanel({
   // otherwise bypass MergeFlow's mid-conflict close-guard. See
   // App.tsx for the current mount.
 
+  // Public WebMCP demo: the AI Chat tab hosts the scripted "what-ai-can-do"
+  // replay. Mount the live TerminalTabs surface only while such a replay is
+  // running (a tab with source "tutorial-replay"); otherwise the tab shows a
+  // placeholder and no PTY is spawned.
+  const hasScriptedReplay = useAppStore((state) =>
+    state.terminalTabs.some((tab) => tab.source === "tutorial-replay"),
+  );
+
   return (
     <section className="flex h-full flex-col overflow-hidden bg-[linear-gradient(180deg,_rgba(255,255,255,0.94),_rgba(238,231,219,0.98))]">
       <TabBar
@@ -83,20 +118,24 @@ export function BottomPanel({
       />
 
       <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2 scrollbar-thin">
-        {/* TerminalTabs must stay MOUNTED across bottom-panel tab switches
-            so PTY subprocesses survive (unmount fires the WS cleanup hook
-            which kills the child process tree). Hide via CSS when another
-            tab is active.
+        {/* AI Chat surface (public WebMCP demo). Mounted — and only CSS-hidden
+            when another tab is active — while a scripted tutorial replay runs,
+            so its PTY survives bottom-tab switches (unmount fires the WS cleanup
+            hook that kills the child process tree). Outside a replay the tab
+            shows a placeholder and nothing is spawned.
 
-            AI Chat owns provider/AI-block chat tabs; Terminal owns
-            user-terminal tabs. Each surface renders only its own tabs so a
-            running PTY is mounted exactly once.
-
-            Hotfix #977: the inner white-card frame was removed so the
-            active-tab body fills the available space without a nested
-            scroll context. The lineage tab (ADR-038 §3.8) and git tab
-            (ADR-039 §3.5, #972) both render inside this flat container. */}
-        {activeTab === "config" ? (
+            Hotfix #977: the inner white-card frame was removed so the active-tab
+            body fills the space without a nested scroll context; the lineage
+            (ADR-038 §3.8) and git (ADR-039 §3.5, #972) tabs render inside this
+            flat container. */}
+        {hasScriptedReplay ? (
+          <div className={`h-full ${activeTab === "ai" ? "" : "hidden"}`}>
+            <TerminalTabs active={activeTab === "ai"} surface="chat" />
+          </div>
+        ) : null}
+        {activeTab === "ai" ? (
+          hasScriptedReplay ? null : <AiTabPlaceholder />
+        ) : activeTab === "config" ? (
           // ADR-053 (#2057) — a step saying "set this block's path" points at
           // the panel, not at the node: once a block is selected, the settings
           // are what the reader acts on and the node is only where they came

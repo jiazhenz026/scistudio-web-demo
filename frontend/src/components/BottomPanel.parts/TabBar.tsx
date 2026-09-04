@@ -56,11 +56,13 @@ const TAB_LABELS: Record<BottomTab, ReactNode> = {
 // ADR-039 §3.5 (#972) — Git tab added.
 // Hotfix: Terminal is promoted to a top-level tab alongside AI Chat.
 // #1713 — Plots sits next to Lineage; both surface workflow-wide artifacts.
-// Public WebMCP demo: the AI Chat and Terminal tabs are removed. The demo's
-// agent is ChatGPT itself over WebMCP, so the in-app chat is redundant, and the
-// PTY router the Terminal needs is withheld from the demo anyway. The "ai" and
-// "terminal" BottomTab members stay in the type but are no longer surfaced.
-export const ALL_TABS: BottomTab[] = ["config", "logs", "plots", "lineage", "git"];
+// Public WebMCP demo: the Terminal tab stays removed (a bare interactive shell
+// the demo has no use for), but AI Chat is RESTORED — the "what-ai-can-do"
+// tutorial plays its scripted, no-credential AI session into this surface, which
+// is the story the demo most wants judges to see. Outside that tutorial the tab
+// shows a placeholder (see BottomPanel's `ai` branch), so no live PTY is spawned
+// until a replay actually needs one.
+export const ALL_TABS: BottomTab[] = ["ai", "config", "logs", "plots", "lineage", "git"];
 
 function formatBadge(n: number): string {
   return n > 99 ? "99+" : String(n);

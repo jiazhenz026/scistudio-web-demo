@@ -79,11 +79,14 @@ def demo_trust_upstream() -> bool:
 # removes a distinct class of trouble. Anything the demo actually exercises
 # stays, protected by the password rather than by removal.
 BLOCKED_ROUTERS: dict[str, str] = {
-    "ai_pty": (
-        "A PTY over WebSocket. The demo drives SciStudio through WebMCP tools, "
-        "so an interactive shell adds no capability the demo needs and a great "
-        "deal it does not."
-    ),
+    # ai_pty is intentionally NOT withheld. The "what-ai-can-do" tutorial — the
+    # one that shows judges what the AI can do — is a scripted (fake, no-credential)
+    # AI session whose recorded bytes are delivered through the product's REAL PTY
+    # path (see tutorials.py, FR-061a). Withholding the PTY router breaks that
+    # tutorial outright. Serving it is a bounded risk: the demo already executes
+    # arbitrary user code through CodeBlock, and every session runs in its own
+    # password-gated, disposable, network-isolated container, so a PTY shell adds
+    # no capability class the container does not already contain.
     "packages": (
         "Installs packages into the running interpreter. That mutates the "
         "runtime underneath the demo and pulls code from outside the image, "
@@ -99,10 +102,11 @@ BLOCKED_ROUTERS: dict[str, str] = {
 
 
 # Core tutorials withheld from the demo's Learning Center, by directory slug.
-# "what-ai-can-do" drives SciStudio's in-app AI assistant over a PTY, which the
-# demo withholds (ai_pty), so the tutorial cannot run here. The demo's AI story
-# is ChatGPT over WebMCP, not the in-app assistant.
-BLOCKED_TUTORIALS: frozenset[str] = frozenset({"what-ai-can-do"})
+# Empty: "what-ai-can-do" is restored now that ai_pty is served again. It is a
+# scripted (fake) AI session — no live agent, no credentials — and it is exactly
+# the story the demo wants judges to see: what SciStudio's AI can do. Its bytes
+# ride the real PTY path, which is why it needs ai_pty (see BLOCKED_ROUTERS).
+BLOCKED_TUTORIALS: frozenset[str] = frozenset()
 
 
 # Built-in blocks withheld from the demo palette. Not CodeBlock — authoring and

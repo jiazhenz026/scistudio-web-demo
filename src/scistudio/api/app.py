@@ -366,8 +366,14 @@ def create_app() -> FastAPI:
     # ``/api/projects/{project_id}``.
     app.include_router(user_library.router)
     app.include_router(ai.router)
-    if not _public_demo:  # withheld: public_demo.BLOCKED_ROUTERS
-        app.include_router(ai_pty.router)
+    # Served in the public demo too: the "what-ai-can-do" tutorial — the one that
+    # shows judges what the AI can do — plays its scripted, no-credential AI
+    # session through the real PTY path (tutorials.py FR-061a), so withholding
+    # this router breaks that tutorial. The demo already runs arbitrary user code
+    # via CodeBlock inside a password-gated, disposable, network-isolated
+    # container, so a PTY adds no capability class the container does not already
+    # contain. See scistudio.public_demo (ai_pty is intentionally not withheld).
+    app.include_router(ai_pty.router)
     # ADR-036 §3.3 — server-side ruff lint endpoint for the embedded editor.
     app.include_router(lint.router)
     # ADR-038 §5.2 — ``runs`` router (lineage REST surface, D38-2.4a).
