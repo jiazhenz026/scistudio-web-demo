@@ -60,6 +60,11 @@ const SESSION_COOKIE = "scistudio_sid";
 const AUTH_COOKIE = "scistudio_auth";
 const LOGIN_PATH = "/_demo/login";
 const STARTING_PATH = "/_demo/starting";
+// Mints a fresh session id and bounces back through the interstitial. The
+// escape hatch for a wedged container: the interstitial navigates here after a
+// long unsuccessful wait, and a fresh sid means a fresh container — the same
+// recovery a visitor used to get only by clearing site data by hand.
+const RESET_PATH = "/_demo/reset";
 
 function readCookie(request: Request, name: string): string | null {
   const header = request.headers.get("cookie") ?? "";
@@ -123,6 +128,27 @@ function loginPage(error = ""): Response {
 
 function cookie(name: string, value: string, maxAge: number): string {
   return `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${maxAge}`;
+}
+
+/**
+ * A cookie with no Max-Age — the browser drops it when the session ends (all
+ * windows closed). The session id is stored this way on purpose: a reopened
+ * browser then starts a fresh container instead of returning to a possibly-cold
+ * or wedged one, and because the auth cookie persists, the visitor is not asked
+ * for the access code again. Within a live session the sid still sticks, so an
+ * open tab keeps its container.
+ */
+function sessionCookie(name: string, value: string): string {
+  return `${name}=${value}; Path=/; HttpOnly; SameSite=Lax; Secure`;
+}
+
+/** Whether this is a top-level document navigation (an address-bar / reload / link
+ *  load), as opposed to an XHR/fetch/asset request the SPA fires. Document loads
+ *  must never be held open through a cold start — that is the spinner-hang. */
+function isDocumentNavigation(request: Request): boolean {
+  if (request.method !== "GET") return false;
+  if (request.headers.get("sec-fetch-dest") === "document") return true;
+  return (request.headers.get("accept") ?? "").includes("text/html");
 }
 
 /**
@@ -193,6 +219,33 @@ async function fetchContainer(
 }
 
 /**
+ * One fast attempt that classifies a cold/stopped container instead of holding
+ * the connection open through a cold start.
+ *
+ * Document navigations use this: a cold revisit is answered with the loading
+ * interstitial (which gives the wait a face and polls the container up) rather
+ * than a spinner on a request held open for the whole ~minute boot. XHR/asset
+ * requests keep using the retrying ``fetchContainer`` — the SPA tolerates a
+ * brief hold and retries a 503 on its own.
+ */
+async function fetchContainerOnce(
+  container: DurableObjectStub<SciStudioContainer>,
+  request: Request,
+): Promise<{ response: Response } | { cold: true }> {
+  try {
+    const response = await container.fetch(request.clone());
+    if (response.status >= 500) {
+      const body = await response.clone().text().catch(() => "");
+      if (COLD_CONTAINER.test(body)) return { cold: true };
+    }
+    return { response };
+  } catch (error) {
+    if (COLD_CONTAINER.test(String(error))) return { cold: true };
+    throw error;
+  }
+}
+
+/**
  * Interstitial shown right after login while the session's container cold-starts.
  *
  * Served by the Worker itself, so it appears instantly without waiting on a
@@ -243,6 +296,15 @@ function startingPage(): Response {
       if (r.ok) { location.replace('/'); return; }
     } catch (_) { /* container not up yet */ }
     const elapsed = Date.now() - started;
+    // Past ~75s the container is not merely cold, it is wedged (a crashed or
+    // orphaned instance the sid is pinned to). Rotate to a fresh session once —
+    // sessionStorage guards against a reset loop — so the visitor recovers
+    // automatically instead of clearing site data by hand.
+    if (elapsed > 75000 && !sessionStorage.getItem('scistudio_reset')) {
+      try { sessionStorage.setItem('scistudio_reset', '1'); } catch (_) {}
+      location.replace('${RESET_PATH}');
+      return;
+    }
     if (elapsed > 60000) {
       msg.textContent = 'Still starting — a fresh runtime is booting the scientific stack. Hang tight.';
     }
@@ -279,7 +341,10 @@ export default {
           // wait a face instead of a blank page.
           ["location", STARTING_PATH],
           ["set-cookie", cookie(AUTH_COOKIE, expected, 86400)],
-          ["set-cookie", cookie(SESSION_COOKIE, sid, 86400)],
+          // Session-scoped: a reopened browser starts a fresh container (the
+          // auth cookie still spares the visitor the access code). See
+          // sessionCookie().
+          ["set-cookie", sessionCookie(SESSION_COOKIE, sid)],
         ],
       });
     }
@@ -297,16 +362,57 @@ export default {
       return startingPage();
     }
 
+    // Wedged-session escape hatch: mint a fresh session id (a fresh container)
+    // and bounce back through the interstitial. Reached only from the
+    // interstitial's own long-wait fallback, so a visitor recovers from a
+    // crashed/orphaned container without clearing site data by hand.
+    if (url.pathname === RESET_PATH) {
+      const fresh = crypto.randomUUID();
+      return new Response(null, {
+        status: 303,
+        headers: [
+          ["location", STARTING_PATH],
+          ["set-cookie", sessionCookie(SESSION_COOKIE, fresh)],
+        ],
+      });
+    }
+
     // Authenticated. Pin to this session's container, minting a session id if
     // the cookie was lost (e.g. after the auth cookie outlived the session one).
     let sid = readCookie(request, SESSION_COOKIE);
     let setSid: string | null = null;
     if (!sid) {
       sid = crypto.randomUUID();
-      setSid = cookie(SESSION_COOKIE, sid, 86400);
+      setSid = sessionCookie(SESSION_COOKIE, sid);
     }
 
     const container = getContainer(env.SCISTUDIO, sid);
+
+    // Document navigations must not be held open through a cold start — that
+    // held-open request is the spinner-hang a returning visitor sees. Try once:
+    // if the container is warm, serve it; if it is cold or stopped, send the
+    // loading interstitial, which starts it with a face on the wait and, if it
+    // never comes up, rotates to a fresh session. XHR/asset requests keep the
+    // retrying path below (the SPA tolerates a brief hold and retries a 503).
+    if (isDocumentNavigation(request)) {
+      const once = await fetchContainerOnce(container, request);
+      if ("cold" in once) {
+        const headers: [string, string][] = [["location", STARTING_PATH]];
+        if (setSid) headers.push(["set-cookie", setSid]);
+        return new Response(null, { status: 303, headers });
+      }
+      if (setSid) {
+        const headers = new Headers(once.response.headers);
+        headers.append("set-cookie", setSid);
+        return new Response(once.response.body, {
+          status: once.response.status,
+          statusText: once.response.statusText,
+          headers,
+        });
+      }
+      return once.response;
+    }
+
     const response = await fetchContainer(container, request);
 
     if (setSid) {
