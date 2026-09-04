@@ -30,24 +30,43 @@ function element(): HTMLElement {
 
   el = document.createElement("div");
   el.id = ID;
-  el.style.cssText = [
-    "position:fixed",
-    "right:12px",
-    "bottom:12px",
-    "z-index:2147483000",
+
+  // Shared visual: a small pill. Colours are tuned to sit inside the light
+  // toolbar rather than float over dark canvas.
+  const base = [
     "display:flex",
     "align-items:center",
-    "gap:7px",
-    "padding:6px 11px",
+    "gap:6px",
+    "padding:4px 10px",
     "border-radius:999px",
     "font:12px/1 ui-sans-serif,system-ui,-apple-system,sans-serif",
-    "background:rgba(20,22,27,.92)",
-    "color:#e8eaed",
-    "border:1px solid rgba(255,255,255,.10)",
-    "box-shadow:0 2px 10px rgba(0,0,0,.28)",
-    "pointer-events:none",
+    "background:#f5f1e8",
+    "color:#57534e",
+    "border:1px solid #e7e5e4",
     "user-select:none",
-    "backdrop-filter:blur(6px)",
+    "white-space:nowrap",
+  ];
+
+  // Preferred home: a slot the Toolbar renders (#webmcp-status-slot). Plain DOM
+  // appended into a React-rendered slot the app never re-renders away survives,
+  // and it sits in the top toolbar instead of floating over the bottom-right UI.
+  const slot = document.getElementById("webmcp-status-slot");
+  if (slot) {
+    el.style.cssText = base.join(";");
+    slot.appendChild(el);
+    return el;
+  }
+
+  // Fallback (SPA/toolbar not mounted — the badge's original reason to exist):
+  // pin to the TOP-right so it does not cover the bottom-right controls.
+  el.style.cssText = [
+    ...base,
+    "position:fixed",
+    "top:10px",
+    "right:16px",
+    "z-index:2147483000",
+    "box-shadow:0 2px 10px rgba(0,0,0,.18)",
+    "pointer-events:none",
   ].join(";");
   document.body.appendChild(el);
   return el;

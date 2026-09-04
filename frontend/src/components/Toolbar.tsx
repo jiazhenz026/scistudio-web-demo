@@ -208,6 +208,10 @@ export function Toolbar(props: ToolbarProps) {
         {/* #1784 — Packages: opens the in-app Package Manager. Badge marks
             available OTA updates found by the startup check. */}
         <div className="flex shrink-0 items-center gap-2">
+          {/* Public WebMCP demo: the on-page WebMCP status pill mounts here
+              (plain DOM appended by src/webmcp/badge.ts) instead of floating
+              over the bottom-right canvas where it covered other controls. */}
+          <div id="webmcp-status-slot" className="flex items-center" />
           {/*
            * ADR-053 FR-082 — the Learning Center's permanent entry.
            *

@@ -22,7 +22,7 @@
 //     BlockNode split; useAppKeyboardShortcuts here).
 
 import { ReactFlowProvider } from "@xyflow/react";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { useLogStream } from "./hooks/useSSE";
 import { useWorkflowWebSocket } from "./hooks/useWebSocket";
@@ -239,6 +239,14 @@ export default function App() {
       useAppStore.getState().togglePalette();
     }
   }, []);
+  // Owner request: a finished plot Run publishes its result to
+  // `plotPreviewTarget`. Surface it by switching the sidebar to the Preview
+  // section — the same reveal selecting a node does (onNodeSelected below) —
+  // so the plot the reader just ran is on screen without a manual tab switch.
+  const plotPreviewTarget = useAppStore((state) => state.plotPreviewTarget);
+  useEffect(() => {
+    if (plotPreviewTarget) selectLeftTab("previewers");
+  }, [plotPreviewTarget, selectLeftTab]);
   const handleActivitySelect = useCallback(
     (tab: LeftTab) => {
       const { paletteCollapsed: collapsed, togglePalette: toggle } = useAppStore.getState();

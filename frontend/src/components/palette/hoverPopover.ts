@@ -26,6 +26,9 @@ export const POPOVER_GAP = 8;
 export const POPOVER_OPEN_DELAY_MS = 150;
 /** Rough popover height used to keep the card inside the viewport. */
 export const POPOVER_MAX_HEIGHT = 240;
+/** Popover width — `DetailPopover` is `w-64` (256px). Used to decide whether
+ *  the card fits to the right of a tile or must flip to its left. */
+export const POPOVER_WIDTH = 256;
 /**
  * Grace period after the pointer leaves a tile before the popover closes.
  *
@@ -37,23 +40,42 @@ export const POPOVER_MAX_HEIGHT = 240;
  */
 export const POPOVER_CLOSE_DELAY_MS = 120;
 
-/** The part of a `DOMRect` the tile anchor needs. */
+/** The part of a `DOMRect` the tile anchor needs. `left` is optional so a
+ *  caller passing only `{ right, top }` keeps the right-opening default; the
+ *  real callers pass a full `getBoundingClientRect()`, which carries `left`. */
 export interface TileRect {
+  left?: number;
   right: number;
   top: number;
 }
 
 /**
- * Anchor a popover to the right of `rect`, clamped so the card stays on screen.
+ * Anchor a popover beside `rect`, clamped so the card stays on screen.
  *
- * `viewportHeight` defaults to `window.innerHeight`; when neither is available
- * (SSR / a bare jsdom document) the tile's own top is used unclamped.
+ * Prefers opening to the RIGHT of the tile (the desktop palette is pinned to
+ * the window's left edge). When the card would overflow the viewport's right
+ * edge — the web demo pins the palette to the RIGHT — it flips to the tile's
+ * left instead, so blocks/workflows/types popovers never render off-screen.
+ *
+ * `viewportHeight`/`viewportWidth` default to `window.inner*`; when neither is
+ * available (SSR / a bare jsdom document) the tile's own top is used unclamped
+ * and the popover opens to the right.
  */
-export function computeTileAnchor(rect: TileRect, viewportHeight?: number): PopoverAnchor {
+export function computeTileAnchor(
+  rect: TileRect,
+  viewportHeight?: number,
+  viewportWidth?: number,
+): PopoverAnchor {
   const height = viewportHeight ?? (typeof window === "undefined" ? undefined : window.innerHeight);
   const maxTop =
     height === undefined ? rect.top : Math.max(POPOVER_GAP, height - POPOVER_MAX_HEIGHT);
-  return { left: rect.right + POPOVER_GAP, top: Math.min(rect.top, maxTop) };
+  const top = Math.min(rect.top, maxTop);
+  const width = viewportWidth ?? (typeof window === "undefined" ? undefined : window.innerWidth);
+  const rightLeft = rect.right + POPOVER_GAP;
+  if (width === undefined || rect.left === undefined || rightLeft + POPOVER_WIDTH <= width) {
+    return { left: rightLeft, top };
+  }
+  return { left: Math.max(POPOVER_GAP, rect.left - POPOVER_GAP - POPOVER_WIDTH), top };
 }
 
 /** The item a popover is currently open for, and where it sits. */
